@@ -72,13 +72,22 @@ def _sse_event(event: str, data: str) -> bytes:
 @router.get("/stream")
 async def chat_stream(
     session_id: str = Query(""),
+    q: Optional[str] = Query(
+        default=None, description="Optional user prompt to stream response for"
+    ),
     principal: Principal = Depends(require_scope("chat:write")),
 ):
-    # For MVP, stream an echo of a synthetic message noting the session
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": f"Stream session: {session_id or 'anonymous'}"},
-    ]
+    # Build messages: prefer explicit user prompt if provided, else synthetic session note
+    if q:
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": q},
+        ]
+    else:
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": f"Stream session: {session_id or 'anonymous'}"},
+        ]
 
     async def event_generator() -> AsyncIterator[bytes]:
         analytics.capture(session_id or principal.key, "chat_start", {"mode": "sse"})

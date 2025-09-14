@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat • deakyne.me</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-7BO3zNO2qdzEaM8bZ8YvnXkGFlbHWJ5qH6G+oSZD4QO7WDo/2Z/hmHYKkM3L4JS2" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
+    <style>
+      :root { --bg: #0b0c10; --panel: #16181d; --text: #e8e8e8; --muted:#a8b0b8; --accent:#5cc8ff; }
+      body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; background: var(--bg); color: var(--text); }
+      .wrap { max-width: 720px; margin: 0 auto; padding: 24px; }
+      h1 { font-size: 18px; font-weight: 600; color: var(--muted); }
+      .chat { background: var(--panel); border-radius: 12px; padding: 16px; box-shadow: 0 1px 0 #000; }
+      .msgs { display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow: auto; padding: 8px; }
+      .msg { display:flex; gap: 12px; }
+      .role { font-weight:600; width: 92px; flex-shrink:0; color: var(--muted); text-transform: capitalize; }
+      .bubble { background: #0f1116; border: 1px solid #22242a; padding: 10px 12px; border-radius: 10px; white-space: pre-wrap; }
+      form { display:flex; gap:8px; margin-top: 12px; }
+      input[type=text] { flex:1; background:#0f1116; color:var(--text); border-radius:10px; border:1px solid #22242a; padding:10px 12px; }
+      button { background: var(--accent); color:#02131c; border:none; border-radius:10px; padding:10px 14px; font-weight:600; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Chat (HTMX + Quart)</h1>
+      <div id="chat-container" class="chat" hx-target="#chat-container" hx-swap="outerHTML">
+        <div class="msgs" id="messages">
+          {% if messages|length == 0 %}
+          <div class="hint">Say hi to start chatting.</div>
+          {% endif %}
+          {% for m in messages %}
+          <div class="msg">
+            <div class="role">{{ m.role }}</div>
+            <div class="bubble">{{ m.content }}</div>
+          </div>
+          {% endfor %}
+          {# Streaming assistant bubble appears only when stream_query is set #}
+          {% if stream_query %}
+          <div class="msg">
+            <div class="role">assistant</div>
+            <div id="assistant-stream" class="bubble"></div>
+          </div>
+          {% endif %}
+        </div>
+        <form id="chat-form" hx-post="/chat/start">
+          <input type="hidden" name="messages" value='{{ messages | tojson }}' />
+          <textarea id="chat-input" name="user_input" placeholder="Type a message…" rows="2" style="flex:1; background:#0f1116; color:var(--text); border-radius:10px; border:1px solid #22242a; padding:10px 12px; resize:vertical"></textarea>
+          <button type="submit" title="Send (Enter)">Send</button>
+        </form>
+        <script>
+          (function(){
+            const input = document.getElementById('chat-input');
+            const form = document.getElementById('chat-form');
+            input.addEventListener('keydown', function(e){
+              if (e.key === 'Enter') {
+                if (e.shiftKey) return; // newline
+                e.preventDefault();
+                form.requestSubmit();
+              }
+            });
+          })();
+        </script>
+        <div class="hint">Backend: {{ backend_url }}</div>
+        {% if stream_query %}
+        <div hx-ext="sse" sse-connect="/sse?q={{ stream_query | urlencode }}">
+          <div id="assistant-stream-sink" sse-swap="token" hx-target="#assistant-stream" hx-swap="beforeend"></div>
+          <div class="hint" sse-swap="done" hx-swap="innerHTML">[done]</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </body>
+  </html>

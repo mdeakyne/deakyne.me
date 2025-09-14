@@ -1,0 +1,24 @@
+name: Coolify Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger backend deploy (Coolify webhook)
+        if: ${{ secrets.COOLIFY_WEBHOOK_BACKEND != '' }}
+        run: |
+          curl -fsSL -X POST "$COOLIFY_WEBHOOK_BACKEND"
+        env:
+          COOLIFY_WEBHOOK_BACKEND: ${{ secrets.COOLIFY_WEBHOOK_BACKEND }}
+
+      - name: Trigger frontend deploy (Coolify webhook)
+        if: ${{ secrets.COOLIFY_WEBHOOK_FRONTEND != '' }}
+        run: |
+          curl -fsSL -X POST "$COOLIFY_WEBHOOK_FRONTEND"
+        env:
+          COOLIFY_WEBHOOK_FRONTEND: ${{ secrets.COOLIFY_WEBHOOK_FRONTEND }}
+

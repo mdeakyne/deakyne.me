@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install uv (fast Python package manager)
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && mv /root/.local/bin/uv /usr/local/bin/uv
+
+# System deps (optional): none required for this MVP
+
+# Install project deps first for better caching
+COPY pyproject.toml uv.lock ./
+# Create virtualenv and install dependencies from lockfile
+RUN uv sync --frozen --no-dev
+
+# Copy application code
+COPY backend ./backend
+
+EXPOSE 8000
+
+# Environment passed via Coolify: API_KEYS_JSON, CORS_ORIGINS, POSTHOG_*
+CMD ["uv", "run", "uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
