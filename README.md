@@ -94,13 +94,13 @@ Local Coolify (port 8000 in use)
 
 Run both services locally with the same port mappings/config:
 
-- `docker compose -f docker-compose.local.yml up --build`
+- `docker compose up --build`
 
 This starts:
 - Backend at http://localhost:8081 (container port 8000)
 - Frontend at http://localhost:8082 (container port 5000)
 
-Defaults in compose:
+Defaults in compose (docker-compose.yaml):
 - Backend `API_KEYS_JSON` contains `dev-key` with `chat:read,chat:write`.
 - Frontend uses `BACKEND_URL=http://backend:8000` (internal network) and `BACKEND_API_KEY=dev-key`.
 
