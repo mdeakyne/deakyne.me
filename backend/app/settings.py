@@ -3,7 +3,8 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import List, Dict
 
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field, validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -54,4 +55,3 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
-

@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.settings import get_settings
 
 
 def with_key(headers: Dict[str, str] | None = None) -> Dict[str, str]:
@@ -18,6 +19,11 @@ def with_key(headers: Dict[str, str] | None = None) -> Dict[str, str]:
 @pytest.fixture(autouse=True)
 def _env_api_keys(monkeypatch):
     monkeypatch.setenv("API_KEYS_JSON", json.dumps({"test-key": ["chat:write", "chat:read"]}))
+    # Ensure settings read updated env
+    try:
+        get_settings.cache_clear()  # type: ignore[attr-defined]
+    except Exception:
+        pass
 
 
 def test_healthz():
@@ -67,4 +73,3 @@ def test_chat_stream_sse_tokens_and_done():
     # Expect at least one token event and then done
     assert "event: token" in text
     assert "event: done" in text
-
