@@ -21,15 +21,18 @@ tests/
 ```
 
 ## Build, Test, and Development Commands
-No tooling is committed yet. Use the matching set below once a stack is chosen:
-- Node (e.g., Astro/Next): `npm install`; `npm run dev` (local), `npm run build` (prod), `npm test`.
-- Python (e.g., MkDocs/Sphinx): `python -m venv .venv && source .venv/bin/activate`; `pip install -r requirements.txt`; `mkdocs serve`; `mkdocs build`.
-Document chosen commands in `README.md` after setup.
+- Python backend (uv-managed):
+  - Install deps: `uv sync` (reads `pyproject.toml`, creates/uses a venv).
+  - Run dev server: `uv run uvicorn backend.app.main:app --reload`.
+  - Run tests: `uv run pytest`.
+  - Lint/format: `uv run ruff check .` and `uv run black .`.
+- Node (if/when frontend exists): `npm install`; `npm run dev`; `npm run build`; `npm test`.
+Note: Commit `uv.lock` once generated for reproducible Python builds.
 
 ## Coding Style & Naming Conventions
 - Indentation: 2 spaces for web files; 4 spaces for Python.
 - Names: kebab-case for files/assets (`about-me.md`), PascalCase for UI components, snake_case for Python modules/functions.
-- Formatting: Prettier for web stacks; Black + Ruff for Python. Add config files (`.prettierrc`, `pyproject.toml`) at repo root.
+- Formatting: Prettier for web stacks; Black + Ruff for Python (run via `uv run`). Configured in `pyproject.toml`.
 
 ## Testing Guidelines
 - Frameworks: Jest/Vitest for JS/TS; pytest for Python.
@@ -48,7 +51,7 @@ Document chosen commands in `README.md` after setup.
 - Validate external content and sanitize user input if any dynamic features are added.
 
 ## Agent-Specific Notes
-- Keep changes scoped and reversible. Follow structure above, update `README.md` when introducing tools, and add minimal CI in a separate PR.
+- Keep changes scoped and reversible. Manage all Python work with `uv` (sync, run, test). Update `README.md` when introducing tools, and add minimal CI in a separate PR.
 
 <!-- AGENTS-CLI-STACK-START -->
 ## CLI Agent Integration
