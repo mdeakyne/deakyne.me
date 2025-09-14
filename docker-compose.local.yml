@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: deakyne-backend-local
+    environment:
+      # Local dev API key map; matches frontend BACKEND_API_KEY below
+      API_KEYS_JSON: '{"dev-key":["chat:read","chat:write"]}'
+      # Allow the frontend origin when accessed via host ports
+      CORS_ORIGINS: http://localhost:8082
+    ports:
+      - "8081:8000" # host:container
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: deakyne-frontend-local
+    environment:
+      # Use the internal Docker network to reach the backend service
+      BACKEND_URL: http://backend:8000
+      BACKEND_API_KEY: dev-key
+    ports:
+      - "8082:5000" # host:container
+    depends_on:
+      - backend
+

@@ -79,3 +79,29 @@ Auto-deploy from main (optional)
   - `COOLIFY_WEBHOOK_BACKEND` set to the backend service’s Deploy Webhook URL.
   - `COOLIFY_WEBHOOK_FRONTEND` set to the frontend service’s Deploy Webhook URL.
 - A workflow `.github/workflows/coolify-deploy.yml` triggers these webhooks on pushes to `main`.
+
+Local Coolify (port 8000 in use)
+- If your Coolify dashboard runs on `http://localhost:8000`, avoid reusing 8000 for the backend service on the host.
+- Recommended host port mappings:
+  - Backend service: container port 8000 → host port 8081
+  - Frontend service: container port 5000 → host port 8082
+- Update env when running locally via Coolify:
+  - Frontend `BACKEND_URL=http://localhost:8081`
+  - Backend `CORS_ORIGINS=http://localhost:8082`
+  - Keep API keys in `API_KEYS_JSON` (e.g., `{ "prod-key": ["chat:read","chat:write"] }`).
+
+### Local Docker Compose (Coolify parity)
+
+Run both services locally with the same port mappings/config:
+
+- `docker compose -f docker-compose.local.yml up --build`
+
+This starts:
+- Backend at http://localhost:8081 (container port 8000)
+- Frontend at http://localhost:8082 (container port 5000)
+
+Defaults in compose:
+- Backend `API_KEYS_JSON` contains `dev-key` with `chat:read,chat:write`.
+- Frontend uses `BACKEND_URL=http://backend:8000` (internal network) and `BACKEND_API_KEY=dev-key`.
+
+Adjust env in `docker-compose.local.yml` as needed.
