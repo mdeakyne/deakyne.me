@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Chat • deakyne.me</title>
     <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-7BO3zNO2qdzEaM8bZ8YvnXkGFlbHWJ5qH6G+oSZD4QO7WDo/2Z/hmHYKkM3L4JS2" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/sse.js"></script>
     <style>
       :root { --bg: #0b0c10; --panel: #16181d; --text: #e8e8e8; --muted:#a8b0b8; --accent:#5cc8ff; }
       body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"; background: var(--bg); color: var(--text); }
@@ -42,6 +43,13 @@
           <button type="submit">Send</button>
         </form>
         <div class="hint">Backend: {{ backend_url }}</div>
+
+        <hr style="border:none;border-top:1px solid #22242a;margin:14px 0" />
+        <div hx-ext="sse" sse-connect="/sse">
+          <div class="hint">Streaming demo (SSE proxyed to backend):</div>
+          <div id="stream" class="bubble" style="margin-top:8px; min-height: 20px;" sse-swap="token" hx-swap="beforeend"></div>
+          <div class="hint" sse-swap="done" hx-swap="innerHTML">[done]</div>
+        </div>
       </div>
     </div>
   </body>

@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, AsyncIterator
 
 import httpx
+from html import escape
 from quart import Quart, Response, render_template, request, make_response
 
 
@@ -88,6 +89,55 @@ async def chat() -> Response:
     )
     resp = await make_response(content)
     return _ensure_session_cookie(resp)
+
+
+def _format_sse(event: str, data: str) -> bytes:
+    return f"event: {event}\n" f"data: {data}\n\n".encode()
+
+
+async def _proxy_backend_sse(session_id: str | None) -> AsyncIterator[bytes]:
+    backend = _backend_url()
+    api_key = _api_key()
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    params = {"session_id": session_id or ""}
+
+    async with httpx.AsyncClient(timeout=None) as client:
+        async with client.stream(
+            "GET", f"{backend}/api/chat/stream", headers=headers, params=params
+        ) as r:
+            event = None
+            data_lines: list[str] = []
+            async for raw_line in r.aiter_lines():
+                if raw_line == "":
+                    # dispatch
+                    if event:
+                        data = "\n".join(data_lines)
+                        if event == "token":
+                            try:
+                                payload = json.loads(data)
+                                text = escape(str(payload.get("text", "")))
+                                yield _format_sse("token", text)
+                            except Exception:
+                                yield _format_sse("token", escape(data))
+                        elif event in {"done", "error"}:
+                            yield _format_sse(event, data)
+                    # reset
+                    event = None
+                    data_lines = []
+                    continue
+                if raw_line.startswith("event:"):
+                    event = raw_line.split(":", 1)[1].strip()
+                elif raw_line.startswith("data:"):
+                    data_lines.append(raw_line.split(":", 1)[1].lstrip())
+
+
+@app.get("/sse")
+async def sse() -> Response:
+    sid = request.cookies.get("session_id")
+    gen = _proxy_backend_sse(sid)
+    return Response(gen, mimetype="text/event-stream")
 
 
 if __name__ == "__main__":  # pragma: no cover - manual run helper
