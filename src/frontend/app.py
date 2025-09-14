@@ -102,6 +102,10 @@ async def _proxy_backend_sse(session_id: str | None) -> AsyncIterator[bytes]:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     params = {"session_id": session_id or ""}
+    # pass through optional user prompt
+    user_q = request.args.get("q")
+    if user_q:
+        params["q"] = user_q
 
     async with httpx.AsyncClient(timeout=None) as client:
         async with client.stream(
@@ -138,6 +142,29 @@ async def sse() -> Response:
     sid = request.cookies.get("session_id")
     gen = _proxy_backend_sse(sid)
     return Response(gen, mimetype="text/event-stream")
+
+
+@app.post("/chat/start")
+async def chat_start() -> Response:
+    form = await request.form
+    user_text = (form.get("user_input") or "").strip()
+    try:
+        messages: List[Dict[str, str]] = json.loads(form.get("messages") or "[]")
+    except Exception:
+        messages = []
+
+    if user_text:
+        messages.append({"role": "user", "content": user_text})
+
+    # Render chat with streaming section for assistant response
+    content = await render_template(
+        "index.html",
+        messages=messages,
+        backend_url=_backend_url(),
+        stream_query=user_text,
+    )
+    resp = await make_response(content)
+    return _ensure_session_cookie(resp)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual run helper

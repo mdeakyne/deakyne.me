@@ -36,20 +36,39 @@
             <div class="bubble">{{ m.content }}</div>
           </div>
           {% endfor %}
+          {# Streaming assistant bubble appears only when stream_query is set #}
+          {% if stream_query %}
+          <div class="msg">
+            <div class="role">assistant</div>
+            <div id="assistant-stream" class="bubble"></div>
+          </div>
+          {% endif %}
         </div>
-        <form hx-post="/chat">
+        <form id="chat-form" hx-post="/chat/start">
           <input type="hidden" name="messages" value='{{ messages | tojson }}' />
-          <input type="text" name="user_input" placeholder="Type a message…" autofocus />
-          <button type="submit">Send</button>
+          <textarea id="chat-input" name="user_input" placeholder="Type a message…" rows="2" style="flex:1; background:#0f1116; color:var(--text); border-radius:10px; border:1px solid #22242a; padding:10px 12px; resize:vertical"></textarea>
+          <button type="submit" title="Send (Enter)">Send</button>
         </form>
+        <script>
+          (function(){
+            const input = document.getElementById('chat-input');
+            const form = document.getElementById('chat-form');
+            input.addEventListener('keydown', function(e){
+              if (e.key === 'Enter') {
+                if (e.shiftKey) return; // newline
+                e.preventDefault();
+                form.requestSubmit();
+              }
+            });
+          })();
+        </script>
         <div class="hint">Backend: {{ backend_url }}</div>
-
-        <hr style="border:none;border-top:1px solid #22242a;margin:14px 0" />
-        <div hx-ext="sse" sse-connect="/sse">
-          <div class="hint">Streaming demo (SSE proxyed to backend):</div>
-          <div id="stream" class="bubble" style="margin-top:8px; min-height: 20px;" sse-swap="token" hx-swap="beforeend"></div>
+        {% if stream_query %}
+        <div hx-ext="sse" sse-connect="/sse?q={{ stream_query | urlencode }}">
+          <div id="assistant-stream-sink" sse-swap="token" hx-target="#assistant-stream" hx-swap="beforeend"></div>
           <div class="hint" sse-swap="done" hx-swap="innerHTML">[done]</div>
         </div>
+        {% endif %}
       </div>
     </div>
   </body>
