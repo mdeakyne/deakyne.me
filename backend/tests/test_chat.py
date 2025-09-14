@@ -18,7 +18,9 @@ def with_key(headers: Dict[str, str] | None = None) -> Dict[str, str]:
 
 @pytest.fixture(autouse=True)
 def _env_api_keys(monkeypatch):
-    monkeypatch.setenv("API_KEYS_JSON", json.dumps({"test-key": ["chat:write", "chat:read"]}))
+    monkeypatch.setenv(
+        "API_KEYS_JSON", json.dumps({"test-key": ["chat:write", "chat:read"]})
+    )
     # Ensure settings read updated env
     try:
         get_settings.cache_clear()  # type: ignore[attr-defined]

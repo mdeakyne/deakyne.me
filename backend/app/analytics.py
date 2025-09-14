@@ -19,11 +19,15 @@ class Analytics:
             except Exception:
                 self._client = None
 
-    def capture(self, distinct_id: str, event: str, properties: Dict[str, Any] | None = None) -> None:
+    def capture(
+        self, distinct_id: str, event: str, properties: Dict[str, Any] | None = None
+    ) -> None:
         if not self._client:
             return
         try:
-            self._client.capture(distinct_id=distinct_id, event=event, properties=properties or {})
+            self._client.capture(
+                distinct_id=distinct_id, event=event, properties=properties or {}
+            )
         except Exception:
             # Best-effort analytics: never break requests
             pass
@@ -38,4 +42,3 @@ class Analytics:
 
 
 analytics = Analytics()
-

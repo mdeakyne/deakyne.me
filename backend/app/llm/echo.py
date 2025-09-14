@@ -28,4 +28,3 @@ def _last_user_content(messages: List[Dict[str, Any]]) -> str:
         if m.get("role") == "user":
             return str(m.get("content", "")).strip()
     return ""
-

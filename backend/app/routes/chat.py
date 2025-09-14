@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import time
-from typing import AsyncIterator, Dict, List, Optional
+from typing import AsyncIterator, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from starlette.responses import StreamingResponse
 from starlette.status import HTTP_400_BAD_REQUEST
 
@@ -21,7 +21,7 @@ class Message(BaseModel):
     role: str
     content: str
 
-    @validator("role")
+    @field_validator("role")
     def valid_role(cls, v: str) -> str:  # type: ignore[override]
         if v not in {"user", "assistant", "system"}:
             raise ValueError("role must be one of: user, assistant, system")
@@ -29,7 +29,7 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    messages: List[Message] = Field(..., min_items=1)
+    messages: List[Message] = Field(..., min_length=1)
     session_id: Optional[str] = None
 
 
@@ -48,13 +48,19 @@ async def chat(
     principal: Principal = Depends(require_scope("chat:write")),
 ):
     start = time.perf_counter()
-    last_user = next((m.content for m in reversed(body.messages) if m.role == "user"), "").strip()
+    last_user = next(
+        (m.content for m in reversed(body.messages) if m.role == "user"), ""
+    ).strip()
     if not last_user:
-        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail="Last user message is empty")
+        raise HTTPException(
+            status_code=HTTP_400_BAD_REQUEST, detail="Last user message is empty"
+        )
 
     analytics.capture(body.session_id or principal.key, "chat_start", {"mode": "sync"})
-    text = await provider.generate([m.dict() for m in body.messages])
-    analytics.capture(body.session_id or principal.key, "chat_complete", {"mode": "sync"})
+    text = await provider.generate([m.model_dump() for m in body.messages])
+    analytics.capture(
+        body.session_id or principal.key, "chat_complete", {"mode": "sync"}
+    )
     latency_ms = int((time.perf_counter() - start) * 1000)
     return ChatResponse(id=body.session_id or "", message=text, latency_ms=latency_ms)
 
@@ -78,12 +84,15 @@ async def chat_stream(
         analytics.capture(session_id or principal.key, "chat_start", {"mode": "sse"})
         try:
             async for chunk in provider.generate_stream(messages):
-                analytics.capture(session_id or principal.key, "chat_token", {"n": len(chunk)})
+                analytics.capture(
+                    session_id or principal.key, "chat_token", {"n": len(chunk)}
+                )
                 yield _sse_event("token", json.dumps({"text": chunk}))
-            analytics.capture(session_id or principal.key, "chat_complete", {"mode": "sse"})
+            analytics.capture(
+                session_id or principal.key, "chat_complete", {"mode": "sse"}
+            )
             yield _sse_event("done", json.dumps({"ok": True}))
         except Exception as e:  # pragma: no cover - best effort
             yield _sse_event("error", json.dumps({"error": str(e)}))
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
-
