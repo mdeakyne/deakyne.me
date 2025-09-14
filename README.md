@@ -69,3 +69,13 @@ Coolify steps (two services)
   - Ports: 5000 exposed; health check `/healthz`.
   - Set env: `BACKEND_URL` to the backend’s public URL and `BACKEND_API_KEY`.
 - Enable SSL for both domains (e.g., `deakyne.dev` for backend and `deakyne.me` for frontend).
+
+Env templates
+- Backend: see `.env.backend.example` for placeholders to paste into Coolify.
+- Frontend: see `.env.example` for `BACKEND_URL` and `BACKEND_API_KEY`.
+
+Auto-deploy from main (optional)
+- Add repository secrets in GitHub:
+  - `COOLIFY_WEBHOOK_BACKEND` set to the backend service’s Deploy Webhook URL.
+  - `COOLIFY_WEBHOOK_FRONTEND` set to the frontend service’s Deploy Webhook URL.
+- A workflow `.github/workflows/coolify-deploy.yml` triggers these webhooks on pushes to `main`.
