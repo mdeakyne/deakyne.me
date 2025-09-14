@@ -40,3 +40,32 @@ This repo includes a minimal Quart app that renders a simple HTMX chat UI and pr
 Notes
 - The frontend sends a synchronous chat request to the backend and re-renders the chat panel using HTMX.
 - For streaming tokens (SSE), we can add a Quart proxy endpoint that forwards the backend SSE stream to the browser; this avoids exposing API keys in the client. Let me know if you want that added.
+
+## Coolify Deployment
+
+This repo includes Dockerfiles for backend and frontend:
+
+- Backend: `Dockerfile.backend` (exposes port 8000)
+  - Command: `uvicorn backend.app.main:app --host 0.0.0.0 --port 8000`
+  - Health: `GET /healthz`
+  - Env:
+    - `API_KEYS_JSON` (e.g., `{ "prod-key": ["chat:read","chat:write"] }`)
+    - `CORS_ORIGINS` (comma-separated, e.g., `https://deakyne.me,http://localhost:3000`)
+    - Optional: `POSTHOG_KEY`, `POSTHOG_HOST`, `USE_OSO`, `OSO_POLICY_PATH`
+
+- Frontend: `Dockerfile.frontend` (exposes port 5000)
+  - Command: `hypercorn src.frontend.app:app --bind 0.0.0.0:5000`
+  - Health: `GET /healthz`
+  - Env:
+    - `BACKEND_URL` (e.g., `https://deakyne.dev`)
+    - `BACKEND_API_KEY` (must exist in backend `API_KEYS_JSON` with `chat:write`)
+
+Coolify steps (two services)
+- Connect the GitHub repo in Coolify.
+- Create service “backend” using `Dockerfile.backend`.
+  - Ports: 8000 exposed; enable health check `/healthz`.
+  - Set env: `API_KEYS_JSON`, `CORS_ORIGINS`, `POSTHOG_*` as needed.
+- Create service “frontend” using `Dockerfile.frontend`.
+  - Ports: 5000 exposed; health check `/healthz`.
+  - Set env: `BACKEND_URL` to the backend’s public URL and `BACKEND_API_KEY`.
+- Enable SSL for both domains (e.g., `deakyne.dev` for backend and `deakyne.me` for frontend).

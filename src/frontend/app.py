@@ -170,3 +170,8 @@ async def chat_start() -> Response:
 if __name__ == "__main__":  # pragma: no cover - manual run helper
     # Allows: uv run python -m src.frontend.app
     app.run()
+else:
+    # Health endpoint for container orchestrators (Coolify)
+    @app.get("/healthz")
+    async def healthz() -> Response:  # pragma: no cover - trivial
+        return await make_response({"status": "ok"})
