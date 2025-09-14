@@ -41,9 +41,8 @@
           <input type="text" name="user_input" placeholder="Type a message…" autofocus />
           <button type="submit">Send</button>
         </form>
-        <div class="hint">Backend: {{ env('BACKEND_URL', 'http://127.0.0.1:8000') }}</div>
+        <div class="hint">Backend: {{ backend_url }}</div>
       </div>
     </div>
   </body>
   </html>
-

@@ -6,7 +6,7 @@ import uuid
 from typing import Any, Dict, List
 
 import httpx
-from quart import Quart, Response, render_template, request
+from quart import Quart, Response, render_template, request, make_response
 
 
 def _backend_url() -> str:
@@ -20,30 +20,22 @@ def _api_key() -> str | None:
 app = Quart(__name__, template_folder="templates", static_folder="static")
 
 
-@app.before_request
-async def ensure_session_id() -> None:  # pragma: no cover - simple cookie helper
-    # Use a cookie to keep a stable session id for analytics/back-end correlation
-    sid = request.cookies.get("session_id")
-    if not sid:
-        # Set a temporary value on request context; actual cookie set on first response
-        request.ctx.new_session_id = uuid.uuid4().hex
-
-
-@app.after_request
-async def set_session_cookie(
-    response: Response,
-) -> Response:  # pragma: no cover - trivial
-    sid = request.cookies.get("session_id")
-    new_sid = getattr(request.ctx, "new_session_id", None)
-    if not sid and new_sid:
-        response.set_cookie("session_id", new_sid, httponly=False, samesite="Lax")
+def _ensure_session_cookie(response: Response) -> Response:
+    if not request.cookies.get("session_id"):
+        response.set_cookie(
+            "session_id", uuid.uuid4().hex, httponly=False, samesite="Lax"
+        )
     return response
 
 
 @app.get("/")
 async def index() -> Response:
     messages: List[Dict[str, str]] = []
-    return await render_template("index.html", messages=messages)
+    content = await render_template(
+        "index.html", messages=messages, backend_url=_backend_url()
+    )
+    resp = await make_response(content)
+    return _ensure_session_cookie(resp)
 
 
 @app.post("/chat")
@@ -54,7 +46,11 @@ async def chat() -> Response:
         # No change; re-render current page
         current = form.get("messages") or "[]"
         messages = json.loads(current)
-        return await render_template("index.html", messages=messages)
+        content = await render_template(
+            "index.html", messages=messages, backend_url=_backend_url()
+        )
+        resp = await make_response(content)
+        return _ensure_session_cookie(resp)
 
     # Parse prior messages from hidden field
     try:
@@ -87,7 +83,11 @@ async def chat() -> Response:
     messages.append({"role": "assistant", "content": assistant_text})
 
     # Re-render the chat container with updated messages
-    return await render_template("index.html", messages=messages)
+    content = await render_template(
+        "index.html", messages=messages, backend_url=_backend_url()
+    )
+    resp = await make_response(content)
+    return _ensure_session_cookie(resp)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual run helper
