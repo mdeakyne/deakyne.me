@@ -2,7 +2,7 @@
 FastAPI backend for Deakyne.me developer portal
 Handles JWT generation and email distribution
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
@@ -12,14 +12,63 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 from dotenv import load_dotenv
+from typing import Optional
+import sqlite3
+from contextlib import contextmanager
 
 load_dotenv()
+
+# Database setup
+DB_PATH = os.getenv("DB_PATH", "api_keys.db")
+
+def init_db():
+    """Initialize SQLite database with required tables"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Table for storing email-token pairs
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            token TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_used TIMESTAMP
+        )
+    """)
+
+    # Table for logging API calls
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS api_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address TEXT
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+@contextmanager
+def get_db():
+    """Context manager for database connections"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 app = FastAPI(
     title="Deakyne.me API",
     description="Developer portal backend for API key management",
     version="1.0.0"
 )
+
+# Initialize database on startup
+init_db()
 
 # CORS configuration
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -161,10 +210,30 @@ async def root():
 
 @app.post("/api/request-key", response_model=KeyResponse)
 async def request_key(request: KeyRequest):
-    """Generate and email a JWT token"""
+    """Generate and email a JWT token, or resend existing one"""
     try:
-        # Generate JWT token
-        token = create_jwt_token(request.email)
+        with get_db() as conn:
+            cursor = conn.cursor()
+
+            # Check if email already has a token
+            cursor.execute("SELECT token FROM api_keys WHERE email = ?", (request.email,))
+            result = cursor.fetchone()
+
+            if result:
+                # Reuse existing token
+                token = result['token']
+                print(f"Reusing existing token for {request.email}")
+            else:
+                # Generate new JWT token
+                token = create_jwt_token(request.email)
+
+                # Store in database
+                cursor.execute(
+                    "INSERT INTO api_keys (email, token) VALUES (?, ?)",
+                    (request.email, token)
+                )
+                conn.commit()
+                print(f"Generated new token for {request.email}")
 
         # Send email with token
         send_email(request.email, token)
@@ -182,11 +251,19 @@ async def request_key(request: KeyRequest):
         )
 
 
+class TokenValidation(BaseModel):
+    token: str
+
+
+class MailMessage(BaseModel):
+    message: str
+
+
 @app.post("/api/validate-token")
-async def validate_token(token: str):
+async def validate_token(data: TokenValidation):
     """Validate a JWT token"""
     try:
-        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(data.token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         return {
             "valid": True,
             "email": payload.get("sub"),
@@ -196,6 +273,483 @@ async def validate_token(token: str):
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def verify_token(token: str) -> dict:
+    """Helper function to verify JWT token and return payload"""
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+
+        # Update last_used timestamp for this token
+        email = payload.get("sub")
+        if email:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE email = ?",
+                    (email,)
+                )
+                conn.commit()
+
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def log_api_call(email: str, endpoint: str, ip_address: str = None):
+    """Log an API call to the database"""
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO api_logs (email, endpoint, ip_address) VALUES (?, ?, ?)",
+                (email, endpoint, ip_address)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error logging API call: {e}")
+
+
+def verify_and_log(authorization: Optional[str], endpoint: str) -> str:
+    """Verify token, log the API call, and return email"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    token = authorization[7:] if authorization.startswith("Bearer ") else authorization
+    payload = verify_token(token)
+    email = payload.get("sub")
+
+    # Log the API call
+    log_api_call(email, endpoint)
+
+    return email
+
+
+@app.get("/api/profile")
+async def get_profile(authorization: Optional[str] = Header(None)):
+    """Get basic profile information"""
+    email = verify_and_log(authorization, "/api/profile")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "profile": {
+                "name": "Matthew Deakyne",
+                "location": "Lawrence, Kansas",
+                "email": "mdeakyne@gmail.com",
+                "phone": "408-372-6366",
+                "personal_brand": "People. Data. Story.",
+                "headline": "Technical Educator | Data Evangelist | Automation Strategist",
+                "summary": "Technologist and educator with over a decade of experience designing scalable data systems, automation frameworks, and learning programs that make complex technology approachable and impactful."
+            }
+        }
+    }
+
+
+@app.get("/api/summary")
+async def get_professional_summary(authorization: Optional[str] = Header(None)):
+    """Get professional summary and core strengths"""
+    email = verify_and_log(authorization, "/api/summary")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "professional_summary": {
+                "overview": "Senior leader at the intersection of education, data, and automation. Experienced in evangelism, managed services, and technical consulting across SaaS and higher education sectors.",
+                "mission": "To connect people, data, and systems in ways that accelerate learning, simplify complexity, and scale understanding.",
+                "core_strengths": [
+                    "Building scalable education frameworks and managed services programs",
+                    "Evangelizing complex technologies through storytelling and data visualization",
+                    "Designing modern analytics pipelines using Python, SQL, and automation platforms",
+                    "Translating customer needs into actionable product and data strategies"
+                ]
+            }
+        }
+    }
+
+
+@app.get("/api/experience")
+async def get_experience(authorization: Optional[str] = Header(None)):
+    """Get work experience and positions"""
+    email = verify_and_log(authorization, "/api/experience")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "experience": {
+                "positions": [
+                    {
+                        "title": "Manager, Customer Enablement (Evangelism + Managed Services)",
+                        "company": "TeamDynamix",
+                        "start_date": "2022-05",
+                        "end_date": "Present",
+                        "location": "Remote / Columbus, OH",
+                        "summary": "Lead evangelism and managed services teams, driving customer adoption of iPaaS and CAI automation platforms.",
+                        "achievements": [
+                            "Developed and scaled the Managed Services model, embedding technical consultants with clients.",
+                            "Built evangelism programs and workshops driving engagement across customer communities.",
+                            "Created data pipelines and dashboards for executive reporting on adoption, engagement, and renewal metrics.",
+                            "Collaborated with Product and Engineering to translate customer feedback into roadmap priorities."
+                        ]
+                    },
+                    {
+                        "title": "Principal Analyst",
+                        "company": "University of Kansas",
+                        "start_date": "2021-10",
+                        "end_date": "2022-04",
+                        "summary": "Modernized the university's analytics ecosystem through migration of SAS to Python-based reporting.",
+                        "achievements": [
+                            "Maintained enterprise dashboards in Tableau and Oracle Analytics Cloud.",
+                            "Built predictive models and self-service analytics training materials for research teams.",
+                            "Introduced modern code-sharing practices through Jupyter and GitLab CI/CD."
+                        ]
+                    },
+                    {
+                        "title": "Academic and Service Systems Manager",
+                        "company": "University of Kansas",
+                        "start_date": "2018-07",
+                        "end_date": "2021-10",
+                        "summary": "Managed integrations, education programs, and agile development processes for enterprise systems.",
+                        "achievements": [
+                            "Developed data pipelines and automation integrations across university systems.",
+                            "Implemented agile workflows for distributed technical teams.",
+                            "Mentored staff in analytics and API-driven design thinking."
+                        ]
+                    },
+                    {
+                        "title": "Lead Educational Technologist",
+                        "company": "University of Kansas",
+                        "start_date": "2016-03",
+                        "end_date": "2018-07",
+                        "summary": "Architected educational technology integrations and published open-source developer tools.",
+                        "achievements": [
+                            "Created and published an SDK for Blackboard REST APIs, expanding global developer adoption.",
+                            "Delivered workshops and training sessions for educational technology staff.",
+                            "Developed analytics reporting via REST APIs and SQL."
+                        ]
+                    },
+                    {
+                        "title": "Program Director, Computer Information Systems",
+                        "company": "University of Saint Mary",
+                        "start_date": "2012-08",
+                        "end_date": "2016-05",
+                        "summary": "Redesigned the CIS curriculum to align with industry standards and scalable pedagogy.",
+                        "achievements": [
+                            "Taught and developed computer science and education courses.",
+                            "Integrated modern tools, languages, and professional practices into coursework.",
+                            "Established program metrics for student success and engagement."
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+
+
+@app.get("/api/education")
+async def get_education(authorization: Optional[str] = Header(None)):
+    """Get education and degrees"""
+    email = verify_and_log(authorization, "/api/education")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "education": {
+                "degrees": [
+                    {
+                        "degree": "Master of Science in Applied Statistics & Data Science",
+                        "institution": "University of Kansas Medical Center",
+                        "year": 2021,
+                        "gpa": 4.0
+                    },
+                    {
+                        "degree": "Master of Arts in Education (Adult Education)",
+                        "institution": "University of Saint Mary",
+                        "year": 2014,
+                        "gpa": 4.0
+                    },
+                    {
+                        "degree": "Bachelor of Science in Computer Science (Minor in English)",
+                        "institution": "Iowa State University",
+                        "year": 2008,
+                        "gpa": 3.5
+                    }
+                ]
+            }
+        }
+    }
+
+
+@app.get("/api/skills")
+async def get_skills(authorization: Optional[str] = Header(None)):
+    """Get technical skills and tools"""
+    email = verify_and_log(authorization, "/api/skills")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "skills": {
+                "languages": ["Python", "SQL", "R", "Java"],
+                "frameworks": ["FastAPI", "SQLAlchemy", "Pandas", "Streamlit", "Jupyter", "HvPlot"],
+                "data_platforms": ["Snowflake", "Tableau", "Power BI", "Oracle Analytics Cloud", "Canvas Data"],
+                "automation_platforms": ["TeamDynamix iPaaS", "Zapier", "n8n", "Microsoft Power Automate"],
+                "tools": ["GitLab CI/CD", "Docker", "REST APIs", "Datadog", "Asana", "Salesforce"],
+                "specializations": [
+                    "Data pipeline design and orchestration",
+                    "No-code / low-code automation",
+                    "Technical education program design",
+                    "Data visualization and storytelling",
+                    "Community and developer evangelism"
+                ]
+            }
+        }
+    }
+
+
+@app.get("/api/competencies")
+async def get_competencies(authorization: Optional[str] = Header(None)):
+    """Get core competencies and leadership areas"""
+    email = verify_and_log(authorization, "/api/competencies")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "competencies": {
+                "education_leadership": [
+                    "Scalable enablement and learning program design",
+                    "Train-the-trainer frameworks and certifications",
+                    "Hybrid learning model integration (asynchronous + live)"
+                ],
+                "data_and_automation": [
+                    "End-to-end pipeline architecture",
+                    "API integrations and orchestration",
+                    "Data-driven reporting and metrics frameworks"
+                ],
+                "evangelism_and_community": [
+                    "Developer engagement and education",
+                    "Public speaking, demos, and conference content",
+                    "Product feedback and feature advocacy"
+                ],
+                "collaboration": [
+                    "Cross-functional leadership across Product, Sales, and Customer Success",
+                    "Executive communication and data storytelling",
+                    "Strategic planning and operational execution"
+                ]
+            }
+        }
+    }
+
+
+@app.get("/api/projects")
+async def get_projects(authorization: Optional[str] = Header(None)):
+    """Get portfolio projects"""
+    email = verify_and_log(authorization, "/api/projects")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "projects": [
+                {
+                    "name": "FlowMart Data Dashboard",
+                    "description": "A suite of analytics dashboards visualizing flow and automation adoption across enterprise customers using Polars and hvPlot.",
+                    "tech": ["Python", "SQL", "DuckDB", "hvPlot", "Kendo UI"]
+                },
+                {
+                    "name": "Matt API",
+                    "description": "Personal API and FastAPI backend powering deakyne.dev and deakyne.me, with endpoints for resume, reading lists, and automation demos.",
+                    "tech": ["FastAPI", "Polars", "SQLite", "Cloudflare Pages", "Tailscale"]
+                },
+                {
+                    "name": "Managed Services Portal",
+                    "description": "Internal Kendo UI portal for tracking Managed Services engagements, time tracking, and customer performance metrics.",
+                    "tech": ["Kendo UI", "iPaaS", "SQL Server", "Azure"]
+                },
+                {
+                    "name": "F3 Fitness Deck",
+                    "description": "A custom-designed card workout generator mapping 52 exercises to a deck of cards, blending fitness gamification and data tracking.",
+                    "tech": ["Python", "Notion API", "HTML Canvas"]
+                }
+            ]
+        }
+    }
+
+
+@app.get("/api/hobbies")
+async def get_hobbies(authorization: Optional[str] = Header(None)):
+    """Get hobbies and interests"""
+    email = verify_and_log(authorization, "/api/hobbies")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "hobbies": {
+                "creative_projects": [
+                    "Building custom APIs and automation agents",
+                    "Designing card-based games and D&D story arcs",
+                    "Creating personal analytics dashboards and tools"
+                ],
+                "physical_activities": [
+                    "F3 workouts (bodyweight fitness, rucking, Tabata)",
+                    "Cycling and swimming",
+                    "DIY home projects and woodworking"
+                ],
+                "family_and_community": [
+                    "Raising chickens and gardening with my family",
+                    "Church involvement and small group leadership",
+                    "Mentoring in tech education and community learning"
+                ]
+            }
+        }
+    }
+
+
+@app.get("/api/books")
+async def get_books(authorization: Optional[str] = Header(None)):
+    """Get reading list and books"""
+    email = verify_and_log(authorization, "/api/books")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "books": {
+                "currently_reading": [
+                    "The Lean Startup — Eric Ries",
+                    "Fat Loss Happens on Monday — Dan John & Josh Hillis",
+                    "Seeking Wisdom: From Darwin to Munger — Peter Bevelin",
+                    "Tiny Habits — BJ Fogg",
+                    "Reset — Chip Heath"
+                ],
+                "recent_reads": [
+                    "A Psalm for the Wild-Built — Becky Chambers",
+                    "St. Francis of Assisi — G.K. Chesterton",
+                    "Chain-Gang All-Stars — Nana Kwame Adjei-Brenyah",
+                    "The Diary of a CEO — Steven Bartlett"
+                ],
+                "up_next": [
+                    "Essentialism — Greg McKeown",
+                    "The Ruthless Elimination of Hurry — John Mark Comer",
+                    "Slow Productivity — Cal Newport",
+                    "Principles — Ray Dalio"
+                ]
+            }
+        }
+    }
+
+
+@app.get("/api/principles")
+async def get_principles(authorization: Optional[str] = Header(None)):
+    """Get core principles and philosophy"""
+    email = verify_and_log(authorization, "/api/principles")
+
+    return {
+        "status": "success",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "data": {
+            "principles": {
+                "core_beliefs": [
+                    "Technology is only meaningful when it empowers people.",
+                    "Data should tell a story, not just fill a dashboard.",
+                    "Education scales impact better than any feature.",
+                    "Curiosity beats certainty. Always."
+                ],
+                "tone": "Curious, clear, and constructive — blending storytelling with technical precision."
+            }
+        }
+    }
+
+
+@app.post("/api/mail")
+async def send_mail(mail_data: MailMessage, authorization: Optional[str] = Header(None)):
+    """Send an email message to Matt Deakyne"""
+    email = verify_and_log(authorization, "/api/mail")
+
+    # Validate message
+    if not mail_data.message or len(mail_data.message.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    if len(mail_data.message) > 5000:
+        raise HTTPException(status_code=400, detail="Message too long (max 5000 characters)")
+
+    # Create email
+    subject = f"Message from API User: {email}"
+
+    html_body = f"""
+    <html>
+        <body style="font-family: 'Courier New', monospace; background-color: #0a0e14; color: #00ff00; padding: 20px;">
+            <div style="max-width: 600px; margin: 0 auto; background-color: #1a1e24; padding: 30px; border: 2px solid #00ff00; border-radius: 8px;">
+                <h1 style="color: #00ff00; margin-bottom: 20px;">New Message from Deakyne.me API</h1>
+
+                <p style="color: #00ffff;"><strong>From:</strong> {email}</p>
+                <p style="color: #00ffff;"><strong>Timestamp:</strong> {datetime.utcnow().isoformat()}</p>
+
+                <div style="background-color: #0a0e14; padding: 20px; margin: 20px 0; border-left: 4px solid #00ff00;">
+                    <p style="color: #ffff00; font-weight: bold; margin-bottom: 10px;">Message:</p>
+                    <p style="color: #ffffff; white-space: pre-wrap; line-height: 1.6;">{mail_data.message}</p>
+                </div>
+
+                <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #00ff00; color: #888; font-size: 12px;">
+                    This message was sent via the Deakyne.me Developer API<br>
+                    User email: {email}
+                </p>
+            </div>
+        </body>
+    </html>
+    """
+
+    text_body = f"""
+New Message from Deakyne.me API
+
+From: {email}
+Timestamp: {datetime.utcnow().isoformat()}
+
+Message:
+{mail_data.message}
+
+---
+This message was sent via the Deakyne.me Developer API
+User email: {email}
+    """
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = FROM_EMAIL
+    msg['To'] = "mdeakyne@gmail.com"
+    msg['Reply-To'] = email
+
+    part1 = MIMEText(text_body, 'plain')
+    part2 = MIMEText(html_body, 'html')
+
+    msg.attach(part1)
+    msg.attach(part2)
+
+    # Send email
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+
+        print(f"Message sent from {email} to mdeakyne@gmail.com")
+
+        return {
+            "status": "success",
+            "message": "Your message has been sent to Matt Deakyne",
+            "from": email
+        }
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send message")
 
 
 if __name__ == "__main__":

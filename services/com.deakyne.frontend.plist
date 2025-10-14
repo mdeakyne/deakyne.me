@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.deakyne.frontend</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/matt/.nvm/versions/node/v22.20.0/bin/npm</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/matt/Development/deakyne.me/logs/frontend.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/matt/Development/deakyne.me/logs/frontend-error.log</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/matt/Development/deakyne.me</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/matt/.nvm/versions/node/v22.20.0/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>NODE_ENV</key>
+        <string>production</string>
+        <key>BACKEND_URL</key>
+        <string>http://localhost:8000</string>
+    </dict>
+</dict>
+</plist>

@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const response = await fetch(`${BACKEND_URL}/api/request-key`, {
+    const response = await fetch(`${BACKEND_URL}/api/validate-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -20,14 +20,14 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.detail || 'Failed to request key' },
+        { error: data.detail || 'Failed to validate token' },
         { status: response.status }
       );
     }
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Error proxying request:', error);
+    console.error('Error validating token:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

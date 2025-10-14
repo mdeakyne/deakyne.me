@@ -24,6 +24,7 @@ export const commands: Record<string, CommandHandler> = {
   \x1b[32mapi list\x1b[0m                List available API endpoints\r
   \x1b[32mapi call <endpoint>\x1b[0m     Make an API call\r
   \x1b[32mapi docs <endpoint>\x1b[0m     Show endpoint documentation\r
+  \x1b[32mmail <message>\x1b[0m          Send a message to Matt Deakyne\r
   \x1b[32mlogout\x1b[0m                  Clear authentication\r
   \x1b[32mclear\x1b[0m                   Clear terminal screen\r
 \r
@@ -123,6 +124,53 @@ For more information, visit: https://deakyne.dev/docs\r\n`,
     };
   },
 
+  mail: async (args, context) => {
+    if (!context.authToken) {
+      return {
+        output: '\r\n\x1b[31mError:\x1b[0m Not authenticated\r\nUse \'request-key\' and \'auth\' commands first.\r\n',
+        error: true,
+      };
+    }
+
+    if (args.length === 0) {
+      return {
+        output: '\r\n\x1b[31mError:\x1b[0m Message required\r\nUsage: mail <your message here>\r\n',
+        error: true,
+      };
+    }
+
+    const message = args.join(' ');
+
+    try {
+      const response = await fetch('/api/mail', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${context.authToken}`,
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          output: `\r\n\x1b[31mError:\x1b[0m ${data.error || 'Failed to send message'}\r\n`,
+          error: true,
+        };
+      }
+
+      return {
+        output: `\r\n\x1b[32mSuccess!\x1b[0m Message sent from ${data.email} to Matt Deakyne\r\n`,
+      };
+    } catch (error) {
+      return {
+        output: '\r\n\x1b[31mError:\x1b[0m Failed to send message\r\n',
+        error: true,
+      };
+    }
+  },
+
   api: async (args, context) => {
     if (args.length === 0) {
       return {
@@ -139,12 +187,18 @@ For more information, visit: https://deakyne.dev/docs\r\n`,
         return {
           output: `\r\n\x1b[1;36mAvailable API Endpoints:\x1b[0m\r
 \r
-  \x1b[32mGET\x1b[0m  /api/v1/status        Check API status\r
-  \x1b[32mGET\x1b[0m  /api/v1/user/profile  Get user profile\r
-  \x1b[32mPOST\x1b[0m /api/v1/data/query    Query data\r
+  \x1b[32mGET\x1b[0m  /api/profile          Basic profile information\r
+  \x1b[32mGET\x1b[0m  /api/summary          Professional summary\r
+  \x1b[32mGET\x1b[0m  /api/experience       Work experience\r
+  \x1b[32mGET\x1b[0m  /api/education        Education and degrees\r
+  \x1b[32mGET\x1b[0m  /api/skills           Technical skills\r
+  \x1b[32mGET\x1b[0m  /api/competencies     Core competencies\r
+  \x1b[32mGET\x1b[0m  /api/projects         Portfolio projects\r
+  \x1b[32mGET\x1b[0m  /api/hobbies          Hobbies and interests\r
+  \x1b[32mGET\x1b[0m  /api/books            Reading list\r
+  \x1b[32mGET\x1b[0m  /api/principles       Core principles\r
 \r
-Use 'api docs <endpoint>' for detailed documentation.\r
-Use 'api call <endpoint>' to make a request.\r\n`,
+Use 'api call <endpoint>' to make an authenticated request.\r\n`,
         };
 
       case 'call':
@@ -162,9 +216,40 @@ Use 'api call <endpoint>' to make a request.\r\n`,
           };
         }
 
-        return {
-          output: `\r\n\x1b[33mCalling endpoint:\x1b[0m ${subArgs[0]}\r\n\x1b[90m(API integration coming soon)\x1b[0m\r\n`,
-        };
+        const endpoint = subArgs[0];
+
+        try {
+          const response = await fetch(`/api/call?endpoint=${encodeURIComponent(endpoint)}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${context.authToken}`,
+            },
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            return {
+              output: `\r\n\x1b[31mError:\x1b[0m ${data.error || 'API call failed'}\r\n`,
+              error: true,
+            };
+          }
+
+          // Format the JSON response nicely
+          const jsonOutput = JSON.stringify(data, null, 2)
+            .split('\n')
+            .map(line => '  ' + line)
+            .join('\r\n');
+
+          return {
+            output: `\r\n\x1b[1;36mResponse from ${endpoint}:\x1b[0m\r\n${jsonOutput}\r\n`,
+          };
+        } catch (error) {
+          return {
+            output: '\r\n\x1b[31mError:\x1b[0m Failed to call API\r\n',
+            error: true,
+          };
+        }
 
       case 'docs':
         if (subArgs.length === 0) {
@@ -174,8 +259,35 @@ Use 'api call <endpoint>' to make a request.\r\n`,
           };
         }
 
+        const docEndpoint = subArgs[0];
+        const docs: Record<string, string> = {
+          '/api/profile': 'Basic profile information including name, location, contact, and professional headline',
+          '/api/summary': 'Professional summary with mission statement and core strengths',
+          '/api/experience': 'Detailed work experience and position history',
+          '/api/education': 'Educational background and degrees earned',
+          '/api/skills': 'Technical skills including languages, frameworks, and tools',
+          '/api/competencies': 'Core competencies in leadership, data, automation, and collaboration',
+          '/api/projects': 'Portfolio of notable projects and personal work',
+          '/api/hobbies': 'Personal hobbies and interests outside of work',
+          '/api/books': 'Current reading list and recently completed books',
+          '/api/principles': 'Core principles and professional philosophy',
+        };
+
+        const description = docs[docEndpoint];
+        if (!description) {
+          return {
+            output: `\r\n\x1b[31mError:\x1b[0m Unknown endpoint '${docEndpoint}'\r\nUse 'api list' to see available endpoints.\r\n`,
+            error: true,
+          };
+        }
+
         return {
-          output: `\r\n\x1b[1;36mEndpoint Documentation:\x1b[0m ${subArgs[0]}\r\n\x1b[90m(Documentation coming soon)\x1b[0m\r\n`,
+          output: `\r\n\x1b[1;36mEndpoint:\x1b[0m ${docEndpoint}\r
+\x1b[1;36mMethod:\x1b[0m GET\r
+\x1b[1;36mAuth:\x1b[0m Required (JWT Bearer token)\r
+\x1b[1;36mDescription:\x1b[0m ${description}\r
+\r
+\x1b[33mExample:\x1b[0m api call ${docEndpoint}\r\n`,
         };
 
       default:

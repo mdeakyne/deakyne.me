@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.deakyne.backend</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/matt/Development/deakyne.me/backend/.venv/bin/uvicorn</string>
+        <string>main:app</string>
+        <string>--host</string>
+        <string>127.0.0.1</string>
+        <string>--port</string>
+        <string>8000</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/Users/matt/Development/deakyne.me/logs/backend.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/matt/Development/deakyne.me/logs/backend-error.log</string>
+    <key>WorkingDirectory</key>
+    <string>/Users/matt/Development/deakyne.me/backend</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/matt/Development/deakyne.me/backend/.venv/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
