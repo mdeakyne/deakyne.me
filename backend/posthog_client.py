@@ -41,8 +41,6 @@ def get_posthog_client() -> Optional[Posthog]:
                 project_api_key=api_key,
                 host=host,
                 disable_geoip=True,
-                compress=False,
-                max_request_retries=1,
             )
     return _client
 
@@ -63,7 +61,12 @@ def capture_api_call(payload: Dict[str, Any]) -> bool:
     properties["$process_person_profile"] = False
 
     try:
-        client.capture(distinct_id, event_name, properties)
+        # PostHog v6+ API expects event dict with distinct_id, event, and properties
+        client.capture(
+            distinct_id=distinct_id,
+            event=event_name,
+            properties=properties,
+        )
         return True
     except Exception as exc:  # pragma: no cover - best effort
         logger.warning("PostHog capture failed: %s", exc)

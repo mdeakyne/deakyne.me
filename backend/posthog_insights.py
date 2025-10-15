@@ -105,9 +105,10 @@ async def fetch_endpoint_usage(limit: int = 10, days: int = 30) -> List[Dict[str
                 "name": "api_request",
             }
         ],
-        "breakdown": "endpoint",
-        "breakdown_type": "event",
-        "breakdown_limit": limit,
+        "breakdownFilter": {
+            "breakdown": "endpoint",
+            "breakdown_type": "event",
+        },
     }
 
     data = await _posthog_query(payload)
@@ -138,7 +139,7 @@ async def fetch_active_users(days: int = 7) -> Dict[str, Any]:
                 "event": "api_request",
                 "kind": "EventsNode",
                 "name": "api_request",
-                "aggregation": "unique_users",
+                "math": "dau",  # Daily Active Users
             }
         ],
     }
