@@ -47,3 +47,12 @@ env/
 # backend
 backend/.env
 backend/db.sqlite3
+backend/api_keys.db
+backend/backend/
+*.db
+
+# logs
+logs/
+
+# local codex references
+.codex/

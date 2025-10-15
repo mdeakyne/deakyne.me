@@ -26,13 +26,17 @@ Interactive terminal-based developer portal for the Deakyne.Dev API. Features re
 ## Quick Start
 
 ### Prerequisites
-- Node.js 20+
+- Node.js 22 (managed with [`nvm`](https://github.com/nvm-sh/nvm))
 - Python 3.11+
-- uv (Python package manager)
+- [`uv`](https://docs.astral.sh/uv/) (Python package manager)
 
 ### Frontend Setup
 
 ```bash
+# Ensure the correct Node.js version
+source ~/.nvm/nvm.sh
+nvm use 22
+
 # Install dependencies
 npm install
 
@@ -47,8 +51,14 @@ Visit http://localhost:3000
 ```bash
 cd backend
 
-# Install dependencies with uv
-uv sync
+# Create or reuse a virtualenv managed by uv
+uv venv .venv
+
+# Install dependencies (including PostHog SDK)
+uv pip install --python .venv/bin/python fastapi>=0.115.0 uvicorn[standard]>=0.32.0 \
+  python-jose[cryptography]>=3.3.0 passlib[bcrypt]>=1.7.4 python-multipart>=0.0.12 \
+  pydantic>=2.10.0 pydantic-settings>=2.6.0 python-dotenv>=1.0.0 httpx>=0.27.0 \
+  posthog>=3.5.0
 
 # Copy environment template
 cp .env.example .env
@@ -62,6 +72,16 @@ uv run python main.py
 
 Backend runs on http://localhost:8000
 
+### Metrics Dashboard
+
+Once both services are running, authenticate in the terminal and run:
+
+```bash
+metrics
+```
+
+The dashboard combines local SQLite aggregations with PostHog analytics. The backend proxies PostHog via `/api/metrics/*`, and the frontend mirrors those metrics in the ASCII view. For deeper visualizations, use the PostHog dashboard referenced in the environment variables.
+
 ## Available Terminal Commands
 
 ```bash
@@ -72,6 +92,7 @@ auth <token>           # Authenticate with JWT
 api list               # List available API endpoints
 api call <endpoint>    # Make API call
 api docs <endpoint>    # Show endpoint documentation
+metrics                # View API metrics dashboard
 logout                 # Clear authentication
 clear                  # Clear terminal screen
 ```
@@ -121,8 +142,14 @@ FROM_EMAIL=noreply@deakyne.me
 # CORS
 ALLOWED_ORIGINS=http://localhost:3000
 
-# Deakyne.Dev API
-DEAKYNE_DEV_API_URL=https://deakyne.dev/api
+# PostHog (server-side)
+POSTHOG_PROJECT_API_KEY=phc_server_key
+POSTHOG_HOST=https://us.i.posthog.com
+POSTHOG_PROJECT_ID=123
+POSTHOG_API_KEY=phx_personal_api_key
+
+# Database
+DB_PATH=backend/api_keys.db
 ```
 
 ### Frontend Environment Variables
@@ -130,7 +157,12 @@ DEAKYNE_DEV_API_URL=https://deakyne.dev/api
 Create `.env.local`:
 ```env
 BACKEND_URL=http://localhost:8000
+NEXT_PUBLIC_POSTHOG_KEY=phc_public_key
+NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+NEXT_PUBLIC_POSTHOG_DASHBOARD_URL=https://app.posthog.com/project/123/dashboard
 ```
+
+> **Note:** If you want to avoid generating PostHog person profiles for public traffic, set the `$process_person_profile` property to `false` when capturing events (the integration in this repo does this by default).
 
 ## Deployment
 
