@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import { executeCommand, type CommandContext } from '@/lib/commands';
+import { captureTerminalEvent } from '@/app/config/posthog';
 
 const PROMPT = '\r\n\x1b[32mdeakyne.me\x1b[0m $ ';
 
@@ -41,8 +42,21 @@ export default function Terminal() {
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
 
-    term.open(terminalRef.current);
-    fitAddon.fit();
+    // Safely open terminal with null check
+    if (terminalRef.current) {
+      term.open(terminalRef.current);
+
+      // Fit terminal with error handling and delay
+      setTimeout(() => {
+        try {
+          if (fitAddon && term.element) {
+            fitAddon.fit();
+          }
+        } catch (error) {
+          console.error('Failed to fit terminal:', error);
+        }
+      }, 100);
+    }
 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -61,6 +75,8 @@ export default function Terminal() {
     term.writeln('');
     term.writeln('Type \x1b[33mhelp\x1b[0m to see available commands.');
     term.write(PROMPT);
+
+    captureTerminalEvent('terminal_ready');
 
     // Handle terminal input
     term.onData((data) => {
@@ -83,6 +99,10 @@ export default function Terminal() {
             term.write(PROMPT);
             currentLineRef.current = '';
             cursorPositionRef.current = 0;
+            captureTerminalEvent('terminal_command', {
+              command,
+              error: Boolean(result.error),
+            });
           });
         } else {
           term.write(PROMPT);
@@ -129,14 +149,25 @@ export default function Terminal() {
       }
     });
 
-    // Handle window resize
+    // Handle window resize with debounce and error handling
+    let resizeTimeout: NodeJS.Timeout;
     const handleResize = () => {
-      fitAddon.fit();
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        try {
+          if (fitAddon && term.element) {
+            fitAddon.fit();
+          }
+        } catch (error) {
+          console.error('Failed to fit terminal on resize:', error);
+        }
+      }, 100);
     };
 
     window.addEventListener('resize', handleResize);
 
     return () => {
+      clearTimeout(resizeTimeout);
       window.removeEventListener('resize', handleResize);
       term.dispose();
     };

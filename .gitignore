@@ -47,3 +47,6 @@ env/
 # backend
 backend/.env
 backend/db.sqlite3
+
+# local codex references
+.codex/

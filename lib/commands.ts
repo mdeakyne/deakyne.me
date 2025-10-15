@@ -1,3 +1,5 @@
+import { renderDashboard, type MetricsDashboardPayload } from '@/lib/metrics';
+
 export interface CommandContext {
   authToken: string | null;
   setAuthToken: (token: string | null) => void;
@@ -24,6 +26,7 @@ export const commands: Record<string, CommandHandler> = {
   \x1b[32mapi list\x1b[0m                List available API endpoints\r
   \x1b[32mapi call <endpoint>\x1b[0m     Make an API call\r
   \x1b[32mapi docs <endpoint>\x1b[0m     Show endpoint documentation\r
+  \x1b[32mmetrics\x1b[0m                 View live API metrics dashboard\r
   \x1b[32mmail <message>\x1b[0m          Send a message to Matt Deakyne\r
   \x1b[32mlogout\x1b[0m                  Clear authentication\r
   \x1b[32mclear\x1b[0m                   Clear terminal screen\r
@@ -82,7 +85,7 @@ For more information, visit: https://deakyne.dev/docs\r\n`,
       return {
         output: `\r\n\x1b[32mSuccess!\x1b[0m API key has been sent to ${email}\r\nCheck your inbox and use 'auth <token>' to authenticate.\r\n`,
       };
-    } catch (error) {
+    } catch {
       return {
         output: '\r\n\x1b[31mError:\x1b[0m Failed to connect to server\r\n',
         error: true,
@@ -163,7 +166,7 @@ For more information, visit: https://deakyne.dev/docs\r\n`,
       return {
         output: `\r\n\x1b[32mSuccess!\x1b[0m Message sent from ${data.email} to Matt Deakyne\r\n`,
       };
-    } catch (error) {
+    } catch {
       return {
         output: '\r\n\x1b[31mError:\x1b[0m Failed to send message\r\n',
         error: true,
@@ -244,7 +247,7 @@ Use 'api call <endpoint>' to make an authenticated request.\r\n`,
           return {
             output: `\r\n\x1b[1;36mResponse from ${endpoint}:\x1b[0m\r\n${jsonOutput}\r\n`,
           };
-        } catch (error) {
+        } catch {
           return {
             output: '\r\n\x1b[31mError:\x1b[0m Failed to call API\r\n',
             error: true,
@@ -295,6 +298,29 @@ Use 'api call <endpoint>' to make an authenticated request.\r\n`,
           output: `\r\n\x1b[31mError:\x1b[0m Unknown subcommand '${subcommand}'\r\nAvailable: list, call, docs\r\n`,
           error: true,
         };
+    }
+  },
+
+  metrics: async () => {
+    try {
+      const response = await fetch('/api/metrics/dashboard');
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        return {
+          output: `\r\n\x1b[31mError:\x1b[0m Failed to load metrics dashboard${error.message ? `: ${error.message}` : ''}\r\n`,
+          error: true,
+        };
+      }
+
+      const data = (await response.json()) as MetricsDashboardPayload;
+      return {
+        output: renderDashboard(data),
+      };
+    } catch {
+      return {
+        output: '\r\n\x1b[31mError:\x1b[0m Unable to reach metrics service\r\n',
+        error: true,
+      };
     }
   },
 

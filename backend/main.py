@@ -1,8 +1,8 @@
 """
 FastAPI backend for Deakyne.me developer portal
-Handles JWT generation and email distribution
+Handles JWT generation, email distribution, and metrics logging
 """
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
@@ -15,6 +15,10 @@ from dotenv import load_dotenv
 from typing import Optional
 import sqlite3
 from contextlib import contextmanager
+try:
+    from backend.logging_middleware import LoggingMiddleware  # type: ignore
+except ImportError:
+    from logging_middleware import LoggingMiddleware  # type: ignore
 
 load_dotenv()
 
@@ -44,9 +48,54 @@ def init_db():
             email TEXT NOT NULL,
             endpoint TEXT NOT NULL,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ip_address TEXT
+            ip_address TEXT,
+            response_time_ms INTEGER,
+            status_code INTEGER,
+            user_agent TEXT,
+            request_id TEXT
         )
     """)
+
+    # Backfill missing columns for existing installations
+    cursor.execute("PRAGMA table_info(api_logs)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+    column_defs = {
+        "response_time_ms": "INTEGER",
+        "status_code": "INTEGER",
+        "user_agent": "TEXT",
+        "request_id": "TEXT"
+    }
+    for column_name, column_type in column_defs.items():
+        if column_name not in existing_columns:
+            cursor.execute(f"ALTER TABLE api_logs ADD COLUMN {column_name} {column_type}")
+
+    # Aggregated metrics tables
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_metrics (
+            date DATE PRIMARY KEY,
+            total_calls INTEGER,
+            unique_users INTEGER,
+            avg_response_time_ms REAL,
+            error_rate REAL,
+            refreshed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS endpoint_metrics (
+            date DATE,
+            endpoint TEXT,
+            total_calls INTEGER,
+            avg_response_time_ms REAL,
+            error_rate REAL,
+            error_count INTEGER,
+            PRIMARY KEY (date, endpoint)
+        )
+    """)
+    cursor.execute("PRAGMA table_info(endpoint_metrics)")
+    endpoint_columns = {row[1] for row in cursor.fetchall()}
+    if "error_count" not in endpoint_columns:
+        cursor.execute("ALTER TABLE endpoint_metrics ADD COLUMN error_count INTEGER DEFAULT 0")
 
     conn.commit()
     conn.close()
@@ -69,6 +118,15 @@ app = FastAPI(
 
 # Initialize database on startup
 init_db()
+app.add_middleware(LoggingMiddleware, db_factory=get_db)
+
+try:
+    from backend.routes import metrics as metrics_routes
+except ImportError:
+    from routes import metrics as metrics_routes
+
+metrics_routes.configure(get_db)
+app.include_router(metrics_routes.router)
 
 # CORS configuration
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
@@ -298,22 +356,11 @@ def verify_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-def log_api_call(email: str, endpoint: str, ip_address: str = None):
-    """Log an API call to the database"""
-    try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO api_logs (email, endpoint, ip_address) VALUES (?, ?, ?)",
-                (email, endpoint, ip_address)
-            )
-            conn.commit()
-    except Exception as e:
-        print(f"Error logging API call: {e}")
-
-
-def verify_and_log(authorization: Optional[str], endpoint: str) -> str:
-    """Verify token, log the API call, and return email"""
+async def require_auth(
+    request: Request,
+    authorization: Optional[str] = Header(None)
+) -> str:
+    """Dependency to verify JWT tokens and attach context to the request."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
 
@@ -321,17 +368,18 @@ def verify_and_log(authorization: Optional[str], endpoint: str) -> str:
     payload = verify_token(token)
     email = payload.get("sub")
 
-    # Log the API call
-    log_api_call(email, endpoint)
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    request.state.auth_email = email
+    request.state.bearer_token = token
 
     return email
 
 
 @app.get("/api/profile")
-async def get_profile(authorization: Optional[str] = Header(None)):
+async def get_profile(email: str = Depends(require_auth)):
     """Get basic profile information"""
-    email = verify_and_log(authorization, "/api/profile")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -350,10 +398,8 @@ async def get_profile(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/summary")
-async def get_professional_summary(authorization: Optional[str] = Header(None)):
+async def get_professional_summary(email: str = Depends(require_auth)):
     """Get professional summary and core strengths"""
-    email = verify_and_log(authorization, "/api/summary")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -373,10 +419,8 @@ async def get_professional_summary(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/experience")
-async def get_experience(authorization: Optional[str] = Header(None)):
+async def get_experience(email: str = Depends(require_auth)):
     """Get work experience and positions"""
-    email = verify_and_log(authorization, "/api/experience")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -452,10 +496,8 @@ async def get_experience(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/education")
-async def get_education(authorization: Optional[str] = Header(None)):
+async def get_education(email: str = Depends(require_auth)):
     """Get education and degrees"""
-    email = verify_and_log(authorization, "/api/education")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -487,10 +529,8 @@ async def get_education(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/skills")
-async def get_skills(authorization: Optional[str] = Header(None)):
+async def get_skills(email: str = Depends(require_auth)):
     """Get technical skills and tools"""
-    email = verify_and_log(authorization, "/api/skills")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -514,10 +554,8 @@ async def get_skills(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/competencies")
-async def get_competencies(authorization: Optional[str] = Header(None)):
+async def get_competencies(email: str = Depends(require_auth)):
     """Get core competencies and leadership areas"""
-    email = verify_and_log(authorization, "/api/competencies")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -549,10 +587,8 @@ async def get_competencies(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/projects")
-async def get_projects(authorization: Optional[str] = Header(None)):
+async def get_projects(email: str = Depends(require_auth)):
     """Get portfolio projects"""
-    email = verify_and_log(authorization, "/api/projects")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -584,10 +620,8 @@ async def get_projects(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/hobbies")
-async def get_hobbies(authorization: Optional[str] = Header(None)):
+async def get_hobbies(email: str = Depends(require_auth)):
     """Get hobbies and interests"""
-    email = verify_and_log(authorization, "/api/hobbies")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -614,10 +648,8 @@ async def get_hobbies(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/books")
-async def get_books(authorization: Optional[str] = Header(None)):
+async def get_books(email: str = Depends(require_auth)):
     """Get reading list and books"""
-    email = verify_and_log(authorization, "/api/books")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -648,10 +680,8 @@ async def get_books(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/principles")
-async def get_principles(authorization: Optional[str] = Header(None)):
+async def get_principles(email: str = Depends(require_auth)):
     """Get core principles and philosophy"""
-    email = verify_and_log(authorization, "/api/principles")
-
     return {
         "status": "success",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -670,10 +700,11 @@ async def get_principles(authorization: Optional[str] = Header(None)):
 
 
 @app.post("/api/mail")
-async def send_mail(mail_data: MailMessage, authorization: Optional[str] = Header(None)):
+async def send_mail(
+    mail_data: MailMessage,
+    email: str = Depends(require_auth)
+):
     """Send an email message to Matt Deakyne"""
-    email = verify_and_log(authorization, "/api/mail")
-
     # Validate message
     if not mail_data.message or len(mail_data.message.strip()) == 0:
         raise HTTPException(status_code=400, detail="Message cannot be empty")
