@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from time import perf_counter
 from typing import Callable, ContextManager, Optional
 from uuid import uuid4
 
 from fastapi import Request
+from jose import jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -40,6 +42,26 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         response.headers["X-Request-ID"] = request_id
         return response
 
+    def _extract_email_from_token(self, request: Request) -> Optional[str]:
+        """Extract email from JWT token in Authorization header."""
+        authorization = request.headers.get("authorization")
+        if not authorization:
+            return None
+
+        # Extract token from "Bearer <token>" format
+        token = authorization[7:] if authorization.startswith("Bearer ") else authorization
+
+        try:
+            # Decode JWT without verification (already verified by auth dependency)
+            # We just need to extract the email for logging
+            jwt_secret = os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production")
+            jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+            payload = jwt.decode(token, jwt_secret, algorithms=[jwt_algorithm])
+            return payload.get("sub")
+        except Exception:
+            # If token is invalid or expired, return None and fall back to anonymous
+            return None
+
     async def _record_request(
         self,
         request: Request,
@@ -47,7 +69,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         duration_ms: int,
         status_code: int,
     ) -> None:
-        email = getattr(request.state, "auth_email", None) or "anonymous"
+        # Try to extract email from JWT token in Authorization header
+        email = self._extract_email_from_token(request)
+        if not email:
+            # Fallback to request.state if set by auth dependency
+            email = getattr(request.state, "auth_email", None) or "anonymous"
+
         endpoint = request.url.path
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")

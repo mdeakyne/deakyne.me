@@ -41,14 +41,23 @@ async def _posthog_query(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not _is_configured():
         return {}
 
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        response = await client.post(
-            _query_endpoint(),
-            headers=_authorization_headers(),
-            json=payload,
-        )
-        response.raise_for_status()
-        return response.json()
+    # PostHog Query API requires queries to be wrapped in a "query" field
+    request_body = {"query": payload}
+
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.post(
+                _query_endpoint(),
+                headers=_authorization_headers(),
+                json=request_body,
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        # Log error but don't crash - gracefully degrade to no PostHog data
+        import logging
+        logging.warning(f"PostHog query failed: {e}")
+        return {}
 
 
 async def fetch_usage_timeline(days: int = 30) -> List[Dict[str, Any]]:
@@ -96,9 +105,10 @@ async def fetch_endpoint_usage(limit: int = 10, days: int = 30) -> List[Dict[str
                 "name": "api_request",
             }
         ],
-        "breakdown": "endpoint",
-        "breakdown_type": "event",
-        "breakdown_limit": limit,
+        "breakdownFilter": {
+            "breakdown": "endpoint",
+            "breakdown_type": "event",
+        },
     }
 
     data = await _posthog_query(payload)
@@ -129,7 +139,7 @@ async def fetch_active_users(days: int = 7) -> Dict[str, Any]:
                 "event": "api_request",
                 "kind": "EventsNode",
                 "name": "api_request",
-                "aggregation": "unique_users",
+                "math": "dau",  # Daily Active Users
             }
         ],
     }
