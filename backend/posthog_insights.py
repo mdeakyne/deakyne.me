@@ -41,14 +41,23 @@ async def _posthog_query(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not _is_configured():
         return {}
 
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        response = await client.post(
-            _query_endpoint(),
-            headers=_authorization_headers(),
-            json=payload,
-        )
-        response.raise_for_status()
-        return response.json()
+    # PostHog Query API requires queries to be wrapped in a "query" field
+    request_body = {"query": payload}
+
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.post(
+                _query_endpoint(),
+                headers=_authorization_headers(),
+                json=request_body,
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        # Log error but don't crash - gracefully degrade to no PostHog data
+        import logging
+        logging.warning(f"PostHog query failed: {e}")
+        return {}
 
 
 async def fetch_usage_timeline(days: int = 30) -> List[Dict[str, Any]]:

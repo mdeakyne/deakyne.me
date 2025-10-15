@@ -86,9 +86,16 @@ async def get_dashboard(conn=Depends(_get_connection)):
         "lastRefreshed": overview.get("last_refreshed"),
     }
 
+    # Filter out metrics endpoints from display
+    EXCLUDED_ENDPOINTS = {"/api/metrics", "/api/metrics/dashboard"}
+
     combined_endpoints = []
     remote_map = {item["endpoint"]: item["total"] for item in remote_endpoints}
     for item in endpoints:
+        # Skip metrics endpoints - they're internal and clutter the display
+        if item["endpoint"] in EXCLUDED_ENDPOINTS:
+            continue
+
         combined_endpoints.append(
             {
                 "endpoint": item["endpoint"],
