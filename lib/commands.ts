@@ -93,7 +93,7 @@ For more information, visit: https://deakyne.dev/docs\r\n`,
     }
   },
 
-  auth: (args, context) => {
+  auth: async (args, context) => {
     if (args.length === 0) {
       return {
         output: '\r\n\x1b[31mError:\x1b[0m Token required\r\nUsage: auth <token>\r\n',
@@ -111,12 +111,36 @@ For more information, visit: https://deakyne.dev/docs\r\n`,
       };
     }
 
-    context.setAuthToken(token);
-    localStorage.setItem('auth_token', token);
+    // Validate token with backend
+    try {
+      const response = await fetch('/api/validate-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
 
-    return {
-      output: '\r\n\x1b[32mAuthentication successful!\x1b[0m\r\nYou can now use API commands.\r\n',
-    };
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          output: `\r\n\x1b[31mError:\x1b[0m ${data.detail || 'Invalid token'}\r\n`,
+          error: true,
+        };
+      }
+
+      // Token is valid, set it in context and localStorage
+      context.setAuthToken(token);
+      localStorage.setItem('auth_token', token);
+
+      return {
+        output: '\r\n\x1b[32mAuthentication successful!\x1b[0m\r\nYou can now use API commands.\r\n',
+      };
+    } catch {
+      return {
+        output: '\r\n\x1b[31mError:\x1b[0m Failed to validate token with server\r\n',
+        error: true,
+      };
+    }
   },
 
   logout: (args, context) => {
