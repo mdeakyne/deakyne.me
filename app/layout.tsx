@@ -4,7 +4,7 @@ import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Deakyne.me - Developer API Documentation",
-  description: "Interactive API documentation and developer portal for Deakyne.Dev",
+  description: "Interactive API documentation and developer portal for Deakyne.me",
 };
 
 export default function RootLayout({

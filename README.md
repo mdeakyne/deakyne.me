@@ -1,6 +1,6 @@
 # Deakyne.me - Developer Portal
 
-Interactive terminal-based developer portal for the Deakyne.Dev API. Features real terminal emulation, JWT authentication via email, and interactive API exploration.
+Interactive terminal-based developer portal for the Deakyne.me API. Features real terminal emulation, JWT authentication via email, and interactive API exploration.
 
 ## Features
 
@@ -166,19 +166,43 @@ NEXT_PUBLIC_POSTHOG_DASHBOARD_URL=https://app.posthog.com/project/123/dashboard
 
 ## Deployment
 
-### Frontend (Vercel)
+### Frontend (Cloudflare Tunnel)
+The frontend is deployed via Cloudflare Tunnel with a launchd service on macOS:
+
 ```bash
-vercel deploy
+# Tunnel configuration
+~/.cloudflared/config.yml
+
+# Service management
+sudo launchctl load /Library/LaunchDaemons/com.cloudflare.cloudflared.plist
+sudo launchctl start com.cloudflare.cloudflared
 ```
 
-### Backend (Railway/Fly.io)
-Configure environment variables and deploy:
-```bash
-# Railway
-railway up
+The tunnel points to `localhost:3000` where the Next.js dev server runs.
 
-# Fly.io
-fly deploy
+### Backend (Local Service)
+The FastAPI backend runs as a local service via launchd:
+
+```bash
+# Service file location
+~/Library/LaunchAgents/com.deakyne.backend.plist
+
+# Service management
+launchctl load ~/Library/LaunchAgents/com.deakyne.backend.plist
+launchctl start com.deakyne.backend
+```
+
+### Production Build
+For production deployment:
+
+```bash
+# Frontend
+npm run build
+npm run start
+
+# Backend
+cd backend
+uv run python main.py
 ```
 
 ## Email Setup (Gmail)

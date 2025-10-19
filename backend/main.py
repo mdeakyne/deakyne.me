@@ -601,7 +601,7 @@ async def get_projects(email: str = Depends(require_auth)):
                 },
                 {
                     "name": "Matt API",
-                    "description": "Personal API and FastAPI backend powering deakyne.dev and deakyne.me, with endpoints for resume, reading lists, and automation demos.",
+                    "description": "Personal API and FastAPI backend powering deakyne.me, with endpoints for resume, reading lists, and automation demos.",
                     "tech": ["FastAPI", "Polars", "SQLite", "Cloudflare Pages", "Tailscale"]
                 },
                 {

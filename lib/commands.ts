@@ -37,7 +37,7 @@ Type a command and press Enter to execute.\r\n`,
   docs: () => ({
     output: `\r\n\x1b[1;36mAPI Documentation\x1b[0m\r
 \r
-Welcome to the Deakyne.Dev API documentation.\r
+Welcome to the Deakyne.me API documentation.\r
 \r
 To get started:\r
   1. Request an API key: \x1b[32mrequest-key your@email.com\x1b[0m\r
@@ -45,7 +45,7 @@ To get started:\r
   3. Authenticate: \x1b[32mauth <your-token>\x1b[0m\r
   4. List available endpoints: \x1b[32mapi list\x1b[0m\r
 \r
-For more information, visit: https://deakyne.dev/docs\r\n`,
+For more information, visit: https://deakyne.me\r\n`,
   }),
 
   'request-key': async (args) => {
