@@ -105,7 +105,7 @@ function formatPercent(value: number): string {
 function formatOverview(overview: MetricsOverview): string[] {
   const uptime = overview.uptime ?? (1 - overview.errorRate);
   const lines: string[] = [];
-  lines.push(pad('📊 OVERVIEW (Last 30 Days)'));
+  lines.push(pad('📊  OVERVIEW (Last 30 Days)'));  // Extra space after wide emoji
   lines.push(blankLine());
   lines.push(pad(`Total API Calls:`.padEnd(24) + ` ${formatNumber(overview.totalCalls)}`));
   lines.push(pad(`Unique Developers:`.padEnd(24) + ` ${formatNumber(overview.uniqueUsers)}`));
@@ -137,7 +137,7 @@ function formatEndpoints(endpoints: MetricsEndpointStat[]): string[] {
   const total = endpoints.reduce((acc, item) => acc + item.totalCalls, 0);
   const max = Math.max(...endpoints.map((item) => item.totalCalls));
   const lines: string[] = [];
-  lines.push(pad('📈 TOP ENDPOINTS'));
+  lines.push(pad('📈  TOP ENDPOINTS'));  // Extra space after wide emoji
   lines.push(blankLine());
 
   const ENDPOINT_LABEL_WIDTH = 18;
