@@ -108,7 +108,27 @@ export default function Terminal() {
             setAuthToken,
           };
 
+          // Show loading animation for async commands
+          const loadingFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+          let frameIndex = 0;
+          let loadingInterval: NodeJS.Timeout | null = null;
+
+          // Start loading animation
+          term.write('\r\n\x1b[33m');
+          const startLoadingPos = term.buffer.active.cursorY;
+          loadingInterval = setInterval(() => {
+            term.write(`\r${loadingFrames[frameIndex]} Loading...`);
+            frameIndex = (frameIndex + 1) % loadingFrames.length;
+          }, 80);
+
           executeCommand(command, context).then((result) => {
+            // Stop loading animation
+            if (loadingInterval) {
+              clearInterval(loadingInterval);
+            }
+            // Clear loading line
+            term.write('\r\x1b[K\x1b[0m');
+
             if (result.output) {
               term.write(result.output);
             }
