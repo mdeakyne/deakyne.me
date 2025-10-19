@@ -10,11 +10,11 @@ const PERCENT_FORMAT = new Intl.NumberFormat('en-US', {
 const SPARKLINE_CHARS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 // Helper to calculate visual length accounting for ANSI codes
+// Note: XTerm.js renders emojis as 1-column wide with most fonts
 function visualLength(str: string): number {
-  // Strip ANSI codes and return actual string length
-  // Terminals render emojis/unicode at their UTF-16 length
-  const clean = str.replace(/\x1b\[[0-9;]*m/g, '');
-  return clean.length;
+  // Strip ANSI codes and return string length
+  // In XTerm.js, emojis typically render as 1 column with the default font
+  return str.replace(/\x1b\[[0-9;]*m/g, '').length;
 }
 
 export interface MetricsOverview {
@@ -105,7 +105,7 @@ function formatPercent(value: number): string {
 function formatOverview(overview: MetricsOverview): string[] {
   const uptime = overview.uptime ?? (1 - overview.errorRate);
   const lines: string[] = [];
-  lines.push(pad('📊  OVERVIEW (Last 30 Days)'));  // Extra space after wide emoji
+  lines.push(pad('OVERVIEW (Last 30 Days)'));
   lines.push(blankLine());
   lines.push(pad(`Total API Calls:`.padEnd(24) + ` ${formatNumber(overview.totalCalls)}`));
   lines.push(pad(`Unique Developers:`.padEnd(24) + ` ${formatNumber(overview.uniqueUsers)}`));
@@ -137,7 +137,7 @@ function formatEndpoints(endpoints: MetricsEndpointStat[]): string[] {
   const total = endpoints.reduce((acc, item) => acc + item.totalCalls, 0);
   const max = Math.max(...endpoints.map((item) => item.totalCalls));
   const lines: string[] = [];
-  lines.push(pad('📈  TOP ENDPOINTS'));  // Extra space after wide emoji
+  lines.push(pad('TOP ENDPOINTS'));
   lines.push(blankLine());
 
   const ENDPOINT_LABEL_WIDTH = 18;
@@ -195,7 +195,7 @@ function formatTimeline(points: MetricsTimelinePoint[]): string[] {
   const start = points[0]?.label ?? '';
   const end = points[points.length - 1]?.label ?? '';
   return [
-    pad('⚡ ACTIVITY'),
+    pad('ACTIVITY'),
     blankLine(),
     pad(`Volume: ${spark}`),
     pad(`Range: ${start} → ${end}`),
@@ -204,11 +204,11 @@ function formatTimeline(points: MetricsTimelinePoint[]): string[] {
 
 function formatResponseTimes(trends?: { p50: number; p95: number; p99: number; trend: TrendDirection }): string[] {
   if (!trends) {
-    return [pad('⏱ RESPONSE TIMES'), blankLine(), pad('No percentile data available.')];
+    return [pad('RESPONSE TIMES'), blankLine(), pad('No percentile data available.')];
   }
   const trendSymbol = trends.trend === 'up' ? '↑' : trends.trend === 'down' ? '↓' : '→';
   return [
-    pad('⏱ RESPONSE TIMES'),
+    pad('RESPONSE TIMES'),
     blankLine(),
     pad(`P50 / P95 / P99:`.padEnd(24) + ` ${formatMs(trends.p50)} / ${formatMs(trends.p95)} / ${formatMs(trends.p99)}`),
     pad(`Trend:`.padEnd(24) + ` ${trendSymbol}`),
