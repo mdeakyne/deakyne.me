@@ -1,3 +1,5 @@
+// Box width for metrics dashboard
+// TODO: Make this responsive to terminal width (requires passing term.cols from command context)
 const BOX_WIDTH = 59;
 const NUMBER_FORMAT = new Intl.NumberFormat('en-US');
 const PERCENT_FORMAT = new Intl.NumberFormat('en-US', {
@@ -105,12 +107,28 @@ function formatEndpoints(endpoints: MetricsEndpointStat[]): string[] {
   lines.push(pad('📈 TOP ENDPOINTS'));
   lines.push(blankLine());
 
+  const ENDPOINT_LABEL_WIDTH = 18;
+  const BAR_WIDTH = 24;
+  const SPACING = 2;
+  const AVAILABLE_META_WIDTH = BOX_WIDTH - 4 - ENDPOINT_LABEL_WIDTH - BAR_WIDTH - SPACING;
+
   endpoints.slice(0, 10).forEach((endpoint) => {
     const percentage = total ? (endpoint.totalCalls / total) : 0;
-    const bar = generateBar(endpoint.totalCalls, max);
-    const label = endpoint.endpoint.padEnd(18);
-    const remoteTag = endpoint.remoteTotal ? ` | PostHog: ${formatNumber(endpoint.remoteTotal)}` : '';
-    const meta = `${formatNumber(endpoint.totalCalls)} (${formatPercent(percentage)})${remoteTag}`;
+    const bar = generateBar(endpoint.totalCalls, max, BAR_WIDTH);
+    const label = endpoint.endpoint.padEnd(ENDPOINT_LABEL_WIDTH);
+
+    // Build metadata and truncate if necessary
+    let meta = `${formatNumber(endpoint.totalCalls)} (${formatPercent(percentage)})`;
+    if (endpoint.remoteTotal) {
+      const remoteTag = ` | PostHog: ${formatNumber(endpoint.remoteTotal)}`;
+      const fullMeta = meta + remoteTag;
+      meta = fullMeta.length > AVAILABLE_META_WIDTH
+        ? fullMeta.slice(0, AVAILABLE_META_WIDTH - 3) + '...'
+        : fullMeta;
+    } else if (meta.length > AVAILABLE_META_WIDTH) {
+      meta = meta.slice(0, AVAILABLE_META_WIDTH - 3) + '...';
+    }
+
     lines.push(pad(`${label}${bar}  ${meta}`));
   });
 

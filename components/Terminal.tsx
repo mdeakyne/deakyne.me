@@ -10,6 +10,19 @@ import { captureTerminalEvent } from '@/app/config/posthog';
 
 const PROMPT = '\r\n\x1b[32mdeakyne.me\x1b[0m $ ';
 
+// Helper to calculate visual length without ANSI codes
+function visualLength(str: string): number {
+  return str.replace(/\x1b\[[0-9;]*m/g, '').length;
+}
+
+// Helper to create padded line with borders
+function createBorderedLine(content: string, totalWidth: number): string {
+  const contentVisualLen = visualLength(content);
+  const innerWidth = totalWidth - 4; // Account for "║ " and " ║"
+  const paddingNeeded = Math.max(0, innerWidth - contentVisualLen);
+  return `\x1b[1;36m║\x1b[0m ${content}${' '.repeat(paddingNeeded)} \x1b[1;36m║\x1b[0m`;
+}
+
 export default function Terminal() {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -67,11 +80,14 @@ export default function Terminal() {
       setAuthToken(savedToken);
     }
 
-    // Welcome message
-    term.writeln('\x1b[1;36m╔══════════════════════════════════════════════════════════════╗\x1b[0m');
-    term.writeln('\x1b[1;36m║\x1b[0m  \x1b[1;32mWelcome to Deakyne.me Developer Portal\x1b[0m                  \x1b[1;36m║\x1b[0m');
-    term.writeln('\x1b[1;36m║\x1b[0m  Interactive API Documentation & Testing                  \x1b[1;36m║\x1b[0m');
-    term.writeln('\x1b[1;36m╚══════════════════════════════════════════════════════════════╝\x1b[0m');
+    // Welcome message - responsive width based on terminal cols
+    const termCols = term.cols;
+    const BANNER_WIDTH = Math.min(62, Math.max(40, termCols - 4));
+
+    term.writeln('\x1b[1;36m╔' + '═'.repeat(BANNER_WIDTH) + '╗\x1b[0m');
+    term.writeln(createBorderedLine('\x1b[1;32mWelcome to Deakyne.me Developer Portal\x1b[0m', BANNER_WIDTH + 2));
+    term.writeln(createBorderedLine('Interactive API Documentation & Testing', BANNER_WIDTH + 2));
+    term.writeln('\x1b[1;36m╚' + '═'.repeat(BANNER_WIDTH) + '╝\x1b[0m');
     term.writeln('');
     term.writeln('Type \x1b[33mhelp\x1b[0m to see available commands.');
     term.write(PROMPT);
