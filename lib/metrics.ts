@@ -9,6 +9,24 @@ const PERCENT_FORMAT = new Intl.NumberFormat('en-US', {
 });
 const SPARKLINE_CHARS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
+// Helper to calculate visual length accounting for emojis and special characters
+function visualLength(str: string): number {
+  // Strip ANSI codes if any
+  let clean = str.replace(/\x1b\[[0-9;]*m/g, '');
+
+  // Count visual width - emojis typically take 2 positions
+  return Array.from(clean).reduce((count, char) => {
+    const code = char.codePointAt(0) || 0;
+    // Emoji ranges
+    if ((code >= 0x1F300 && code <= 0x1F9FF) || // Emoticons & symbols
+        (code >= 0x2600 && code <= 0x26FF) ||   // Misc symbols
+        (code >= 0x2700 && code <= 0x27BF)) {   // Dingbats
+      return count + 2;
+    }
+    return count + 1;
+  }, 0);
+}
+
 export interface MetricsOverview {
   totalCalls: number;
   uniqueUsers: number;
@@ -47,9 +65,27 @@ export interface MetricsDashboardPayload {
 }
 
 function pad(content = ''): string {
-  const safe = content.length > BOX_WIDTH - 4 ? content.slice(0, BOX_WIDTH - 7) + '...' : content;
-  const padded = safe.padEnd(BOX_WIDTH - 4, ' ');
-  return `║ ${padded} ║`;
+  const visualLen = visualLength(content);
+  const targetWidth = BOX_WIDTH - 4;
+
+  // If content is too long, truncate it
+  if (visualLen > targetWidth) {
+    let truncated = '';
+    let currentLen = 0;
+    for (const char of Array.from(content)) {
+      const charVisualLen = visualLength(char);
+      if (currentLen + charVisualLen > targetWidth - 3) break;
+      truncated += char;
+      currentLen += charVisualLen;
+    }
+    const truncatedVisualLen = visualLength(truncated);
+    const paddingNeeded = Math.max(0, targetWidth - truncatedVisualLen - 3);
+    return `║ ${truncated}...${' '.repeat(paddingNeeded)} ║`;
+  }
+
+  // Pad to exact width
+  const paddingNeeded = Math.max(0, targetWidth - visualLen);
+  return `║ ${content}${' '.repeat(paddingNeeded)} ║`;
 }
 
 function blankLine(): string {
