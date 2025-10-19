@@ -9,22 +9,12 @@ const PERCENT_FORMAT = new Intl.NumberFormat('en-US', {
 });
 const SPARKLINE_CHARS = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
-// Helper to calculate visual length accounting for emojis and special characters
+// Helper to calculate visual length accounting for ANSI codes
 function visualLength(str: string): number {
-  // Strip ANSI codes if any
-  let clean = str.replace(/\x1b\[[0-9;]*m/g, '');
-
-  // Count visual width - emojis typically take 2 positions
-  return Array.from(clean).reduce((count, char) => {
-    const code = char.codePointAt(0) || 0;
-    // Emoji ranges
-    if ((code >= 0x1F300 && code <= 0x1F9FF) || // Emoticons & symbols
-        (code >= 0x2600 && code <= 0x26FF) ||   // Misc symbols
-        (code >= 0x2700 && code <= 0x27BF)) {   // Dingbats
-      return count + 2;
-    }
-    return count + 1;
-  }, 0);
+  // Strip ANSI codes and return actual string length
+  // Terminals render emojis/unicode at their UTF-16 length
+  const clean = str.replace(/\x1b\[[0-9;]*m/g, '');
+  return clean.length;
 }
 
 export interface MetricsOverview {
