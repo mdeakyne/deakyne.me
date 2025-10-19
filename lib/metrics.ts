@@ -1,6 +1,6 @@
-// Box width for metrics dashboard
+// Box width for metrics dashboard (total line width including border characters ║...║)
 // TODO: Make this responsive to terminal width (requires passing term.cols from command context)
-const BOX_WIDTH = 59;
+const BOX_WIDTH = 61;
 const NUMBER_FORMAT = new Intl.NumberFormat('en-US');
 const PERCENT_FORMAT = new Intl.NumberFormat('en-US', {
   style: 'percent',
@@ -54,7 +54,7 @@ export interface MetricsDashboardPayload {
   };
 }
 
-function pad(content = ''): string {
+function pad(content = '', align: 'left' | 'center' = 'left'): string {
   const visualLen = visualLength(content);
   const targetWidth = BOX_WIDTH - 4;
 
@@ -75,6 +75,13 @@ function pad(content = ''): string {
 
   // Pad to exact width
   const paddingNeeded = Math.max(0, targetWidth - visualLen);
+
+  if (align === 'center') {
+    const leftPadding = Math.floor(paddingNeeded / 2);
+    const rightPadding = paddingNeeded - leftPadding;
+    return `║${' '.repeat(leftPadding + 1)}${content}${' '.repeat(rightPadding + 1)}║`;
+  }
+
   return `║ ${content}${' '.repeat(paddingNeeded)} ║`;
 }
 
@@ -210,10 +217,12 @@ function formatResponseTimes(trends?: { p50: number; p95: number; p99: number; t
 
 export function renderDashboard(payload: MetricsDashboardPayload): string {
   const lines: string[] = [];
+  const borderWidth = BOX_WIDTH - 2; // Subtract 2 for corner characters
+
   lines.push('');
-  lines.push('╔═══════════════════════════════════════════════════════════╗');
-  lines.push('║              DEAKYNE.ME API METRICS DASHBOARD             ║');
-  lines.push('╠═══════════════════════════════════════════════════════════╣');
+  lines.push('╔' + '═'.repeat(borderWidth) + '╗');
+  lines.push(pad('DEAKYNE.ME API METRICS DASHBOARD', 'center'));
+  lines.push('╠' + '═'.repeat(borderWidth) + '╣');
   lines.push(blankLine());
   lines.push(...formatOverview(payload.overview));
   lines.push(blankLine());
@@ -223,7 +232,7 @@ export function renderDashboard(payload: MetricsDashboardPayload): string {
   lines.push(blankLine());
   lines.push(...formatResponseTimes(payload.responseTimes));
   lines.push(blankLine());
-  lines.push('╚═══════════════════════════════════════════════════════════╝');
+  lines.push('╚' + '═'.repeat(borderWidth) + '╝');
   lines.push('');
   return lines.join('\r\n');
 }
