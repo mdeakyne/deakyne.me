@@ -7,6 +7,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import { executeCommand, type CommandContext } from '@/lib/commands';
 import { captureTerminalEvent } from '@/app/config/posthog';
+import { getCompletion } from '@/lib/completion';
 
 const PROMPT = '\r\n\x1b[32mdeakyne.me\x1b[0m $ ';
 
@@ -142,6 +143,29 @@ export default function Terminal() {
           });
         } else {
           term.write(PROMPT);
+        }
+        return;
+      }
+
+      // Handle Tab (completion)
+      if (code === 9) {
+        const completion = getCompletion(currentLineRef.current);
+
+        if (completion) {
+          // Clear current line
+          term.write('\r' + PROMPT.replace('\r\n', ''));
+
+          // Update with completed text
+          currentLineRef.current = completion.completed;
+          cursorPositionRef.current = completion.completed.length;
+          term.write(completion.completed);
+
+          // Show suggestions if multiple matches
+          if (completion.suggestions && completion.suggestions.length > 1) {
+            term.write('\r\n\x1b[33mOptions: \x1b[0m' + completion.suggestions.join(', '));
+            term.write('\r' + PROMPT.replace('\r\n', ''));
+            term.write(currentLineRef.current);
+          }
         }
         return;
       }
