@@ -224,8 +224,10 @@ For more information, visit: https://deakyne.me\r\n`,
   \x1b[32mGET\x1b[0m  /api/hobbies          Hobbies and interests\r
   \x1b[32mGET\x1b[0m  /api/books            Reading list\r
   \x1b[32mGET\x1b[0m  /api/principles       Core principles\r
+  \x1b[33mPOST\x1b[0m /api/chat             AI chat (external only)\r
 \r
-Use 'api call <endpoint>' to make an authenticated request.\r\n`,
+Use 'api call <endpoint>' to make an authenticated request.\r
+For chat endpoint, use 'api docs chat' to see external usage.\r\n`,
         };
 
       case 'call':
@@ -287,6 +289,46 @@ Use 'api call <endpoint>' to make an authenticated request.\r\n`,
         }
 
         const docEndpoint = subArgs[0];
+
+        // Special handling for chat endpoint
+        if (docEndpoint === 'chat' || docEndpoint === '/api/chat') {
+          return {
+            output: `\r\n\x1b[1;36mEndpoint: /api/chat\x1b[0m\r
+\r
+\x1b[33mMethod:\x1b[0m POST\r
+\x1b[33mAuth:\x1b[0m Required (Bearer token)\r
+\r
+\x1b[33mDescription:\x1b[0m\r
+Ask questions about Matt Deakyne. The AI assistant uses available\r
+API endpoints to gather information and provide answers. Maintains\r
+conversation history per session.\r
+\r
+\x1b[33mUsage (curl):\x1b[0m\r
+curl -X POST https://deakyne.me/api/chat \\\\\r
+  -H "Authorization: Bearer YOUR_TOKEN" \\\\\r
+  -H "Content-Type: application/json" \\\\\r
+  -d '{"message": "What are Matt'\''s skills?"}\r
+\r
+\x1b[33mContinue conversation:\x1b[0m\r
+curl -X POST https://deakyne.me/api/chat \\\\\r
+  -H "Authorization: Bearer YOUR_TOKEN" \\\\\r
+  -H "Content-Type: application/json" \\\\\r
+  -d '{"message": "Tell me more", "session_id": "abc-123"}\r
+\r
+\x1b[33mResponse:\x1b[0m\r
+{\r
+  "response": "Matt has expertise in Python, SQL...",\r
+  "session_id": "abc-123-def-456",\r
+  "tokens_used": 150\r
+}\r
+\r
+\x1b[33mRate Limit:\x1b[0m 10 requests per hour per user\r
+\r
+\x1b[31mNote:\x1b[0m This endpoint is NOT accessible from this terminal.\r
+Use curl, Postman, or another HTTP client.\r\n`,
+          };
+        }
+
         const docs: Record<string, string> = {
           '/api/profile': 'Basic profile information including name, location, contact, and professional headline',
           '/api/summary': 'Professional summary with mission statement and core strengths',

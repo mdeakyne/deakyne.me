@@ -106,6 +106,92 @@ clear                  # Clear terminal screen
 5. Use `api list` to see available endpoints
 6. Test APIs with `api call <endpoint>`
 
+## Chat Endpoint (External Use Only)
+
+The `/api/chat` endpoint provides an AI assistant that answers questions about Matt Deakyne by querying available API endpoints using Azure OpenAI with function calling.
+
+### Features
+
+- **AI-powered responses** using Azure OpenAI (GPT-4)
+- **Automatic tool use** - AI queries relevant API endpoints to gather information
+- **Stateful conversations** - maintains conversation history per session
+- **Rate limiting** - 10 requests per hour per authenticated user
+
+### Authentication
+
+Same as other endpoints - use your JWT token from `request-key`.
+
+### Usage Example (curl)
+
+**Start a new conversation:**
+
+```bash
+curl -X POST https://deakyne.me/api/chat \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What is Matt'\''s professional background?"
+  }'
+```
+
+**Continue a conversation:**
+
+```bash
+# Use the session_id from the previous response
+curl -X POST https://deakyne.me/api/chat \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What are his technical skills?",
+    "session_id": "abc-123-def-456"
+  }'
+```
+
+### Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `message` | string | Yes | Your question about Matt (max 2000 characters) |
+| `session_id` | string | No | UUID to continue a previous conversation |
+
+### Response
+
+```json
+{
+  "response": "Matt has expertise in Python, SQL, FastAPI, and data visualization...",
+  "session_id": "abc-123-def-456",
+  "tokens_used": 150
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `response` | string | AI-generated answer to your question |
+| `session_id` | string | UUID for conversation continuity |
+| `tokens_used` | integer | Number of AI tokens consumed (optional) |
+
+### Rate Limiting
+
+- **Limit:** 10 requests per hour per authenticated user
+- **Window:** Rolling 1-hour window
+- **Status Code:** `429 Too Many Requests` if limit exceeded
+
+### Terminal Documentation
+
+To view this documentation from the terminal interface:
+
+```bash
+api docs chat
+```
+
+### Important Notes
+
+- This endpoint is **NOT accessible from the frontend terminal interface**
+- Use curl, Postman, HTTPie, or any HTTP client
+- Conversation history is maintained for up to 20 messages per session
+- The AI uses real API endpoints as tools to gather accurate information
+- Each API call made by the AI counts toward your authentication but not chat rate limits
+
 ## Development
 
 ### Frontend
@@ -150,6 +236,17 @@ POSTHOG_API_KEY=phx_personal_api_key
 
 # Database
 DB_PATH=backend/api_keys.db
+
+# Azure OpenAI Settings
+AZURE_OPENAI_API_KEY=your-azure-openai-key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+
+# Chat Settings
+CHAT_RATE_LIMIT_REQUESTS=10
+CHAT_RATE_LIMIT_WINDOW_HOURS=1
+CHAT_MAX_HISTORY_MESSAGES=20
 ```
 
 ### Frontend Environment Variables

@@ -12,9 +12,10 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, List, Dict
 import sqlite3
 from contextlib import contextmanager
+import uuid
 try:
     from backend.logging_middleware import LoggingMiddleware  # type: ignore
 except ImportError:
@@ -97,6 +98,30 @@ def init_db():
     if "error_count" not in endpoint_columns:
         cursor.execute("ALTER TABLE endpoint_metrics ADD COLUMN error_count INTEGER DEFAULT 0")
 
+    # Chat conversation history table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            message_role TEXT NOT NULL,
+            message_content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (email) REFERENCES api_keys(email)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_conversations(email, session_id)")
+
+    # Chat rate limiting table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_rate_limits (
+            email TEXT PRIMARY KEY,
+            request_count INTEGER DEFAULT 0,
+            window_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (email) REFERENCES api_keys(email)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -128,6 +153,16 @@ except ImportError:
 metrics_routes.configure(get_db)
 app.include_router(metrics_routes.router)
 
+# Import chat modules
+try:
+    from backend.azure_openai_client import AzureOpenAIClient  # type: ignore
+    from backend.tool_executor import ToolExecutor  # type: ignore
+    from backend.rate_limiter import RateLimiter  # type: ignore
+except ImportError:
+    from azure_openai_client import AzureOpenAIClient  # type: ignore
+    from tool_executor import ToolExecutor  # type: ignore
+    from rate_limiter import RateLimiter  # type: ignore
+
 # CORS configuration
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
@@ -148,6 +183,15 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 FROM_EMAIL = os.getenv("FROM_EMAIL", "noreply@deakyne.me")
+
+# Chat configuration
+CHAT_RATE_LIMIT_REQUESTS = int(os.getenv("CHAT_RATE_LIMIT_REQUESTS", "10"))
+CHAT_RATE_LIMIT_WINDOW_HOURS = int(os.getenv("CHAT_RATE_LIMIT_WINDOW_HOURS", "1"))
+CHAT_MAX_HISTORY_MESSAGES = int(os.getenv("CHAT_MAX_HISTORY_MESSAGES", "20"))
+
+# Initialize chat clients
+azure_client = AzureOpenAIClient()
+chat_rate_limiter = RateLimiter(get_db, CHAT_RATE_LIMIT_REQUESTS, CHAT_RATE_LIMIT_WINDOW_HOURS)
 
 
 class KeyRequest(BaseModel):
@@ -315,6 +359,17 @@ class TokenValidation(BaseModel):
 
 class MailMessage(BaseModel):
     message: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    response: str
+    session_id: str
+    tokens_used: Optional[int] = None
 
 
 @app.post("/api/validate-token")
@@ -781,6 +836,135 @@ User email: {email}
     except Exception as e:
         print(f"Error sending message: {e}")
         raise HTTPException(status_code=500, detail="Failed to send message")
+
+
+def generate_session_id() -> str:
+    """Generate a unique session ID for chat conversations"""
+    return str(uuid.uuid4())
+
+
+def load_conversation_history(email: str, session_id: str) -> List[Dict[str, str]]:
+    """
+    Load recent conversation history from database
+
+    Args:
+        email: User's email address
+        session_id: Conversation session ID
+
+    Returns:
+        List of message dictionaries with 'role' and 'content' keys
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Get last N messages for this session, ordered by creation time
+        cursor.execute(
+            """
+            SELECT message_role, message_content
+            FROM chat_conversations
+            WHERE email = ? AND session_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (email, session_id, CHAT_MAX_HISTORY_MESSAGES)
+        )
+
+        rows = cursor.fetchall()
+
+        # Reverse to get chronological order (oldest first)
+        messages = [
+            {"role": row["message_role"], "content": row["message_content"]}
+            for row in reversed(rows)
+        ]
+
+        return messages
+
+
+def save_message(email: str, session_id: str, role: str, content: str) -> None:
+    """
+    Save a message to the conversation history
+
+    Args:
+        email: User's email address
+        session_id: Conversation session ID
+        role: Message role ('user' or 'assistant')
+        content: Message content
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO chat_conversations (email, session_id, message_role, message_content)
+            VALUES (?, ?, ?, ?)
+            """,
+            (email, session_id, role, content)
+        )
+        conn.commit()
+
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat(
+    request: Request,
+    chat_request: ChatRequest,
+    email: str = Depends(require_auth)
+):
+    """
+    Chat endpoint that answers questions about Matt Deakyne
+
+    Uses Azure OpenAI with function calling to query relevant API endpoints
+    and provide informed responses. Maintains conversation history per session.
+
+    Rate limited to prevent abuse.
+    """
+    # 1. Check rate limit
+    try:
+        chat_rate_limiter.check_rate_limit(email)
+    except HTTPException as e:
+        # Add rate limit info to response headers would go here
+        raise e
+
+    # 2. Validate message
+    if not chat_request.message or len(chat_request.message.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    if len(chat_request.message) > 2000:
+        raise HTTPException(status_code=400, detail="Message too long (max 2000 characters)")
+
+    # 3. Get or create session ID
+    session_id = chat_request.session_id or generate_session_id()
+
+    # 4. Load conversation history
+    messages = load_conversation_history(email, session_id)
+
+    # 5. Add user message
+    messages.append({"role": "user", "content": chat_request.message})
+
+    # 6. Get bearer token from request context
+    bearer_token = request.state.bearer_token
+
+    # 7. Create tool executor with auth
+    tool_executor = ToolExecutor(bearer_token)
+
+    # 8. Call Azure OpenAI with tools
+    try:
+        response, tokens_used = await azure_client.chat_completion(messages, tool_executor)
+    except Exception as e:
+        print(f"Error calling Azure OpenAI: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to process chat request. Please try again later."
+        )
+
+    # 9. Save conversation history
+    save_message(email, session_id, "user", chat_request.message)
+    save_message(email, session_id, "assistant", response)
+
+    # 10. Return response
+    return ChatResponse(
+        response=response,
+        session_id=session_id,
+        tokens_used=tokens_used
+    )
 
 
 if __name__ == "__main__":
