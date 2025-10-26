@@ -208,6 +208,38 @@ class TestChatEndpointFunctionality:
             assert response.status_code == 500
             assert "Failed to process chat request" in response.json()["detail"]
 
+    @patch("main.azure_client")
+    @patch("main.chat_rate_limiter")
+    def test_chat_passes_email_and_session_to_analytics(
+        self,
+        mock_rate_limiter,
+        mock_azure_client,
+        client,
+        mock_auth_token
+    ):
+        """Test that chat endpoint passes email and session_id to chat_completion for analytics"""
+        with patch("main.verify_token") as mock_verify:
+            mock_verify.return_value = {"sub": "test@example.com"}
+
+            mock_rate_limiter.check_rate_limit.return_value = None
+
+            # Mock chat completion response
+            mock_azure_client.chat_completion = AsyncMock(return_value=("Response", 100))
+
+            response = client.post(
+                "/api/chat",
+                headers={"Authorization": f"Bearer {mock_auth_token}"},
+                json={"message": "Who is Matt?", "session_id": "test-session-123"}
+            )
+
+            assert response.status_code == 200
+
+            # Verify chat_completion was called with email and session_id
+            mock_azure_client.chat_completion.assert_called_once()
+            call_kwargs = mock_azure_client.chat_completion.call_args.kwargs
+            assert call_kwargs["email"] == "test@example.com"
+            assert call_kwargs["session_id"] == "test-session-123"
+
 
 class TestHelperFunctions:
     """Tests for helper functions"""
