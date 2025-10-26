@@ -217,6 +217,10 @@ Always base your answers on the actual data from the API endpoints."""
                 "Please set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT environment variables."
             )
 
+        # Generate trace ID for linking events
+        trace_id = str(uuid.uuid4())
+        conversation_start_time = time.time()
+
         # Prepend system message
         full_messages = [{"role": "system", "content": self.system_prompt}] + messages
 
@@ -242,6 +246,20 @@ Always base your answers on the actual data from the API endpoints."""
 
             # If no tool calls, we have our final answer
             if not message.tool_calls:
+                # Capture final generation event
+                if self.posthog and self.analytics_enabled:
+                    self._capture_generation_event(
+                        trace_id=trace_id,
+                        email=email,
+                        session_id=session_id,
+                        messages=messages,
+                        response_content=message.content or "",
+                        prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+                        completion_tokens=response.usage.completion_tokens if response.usage else 0,
+                        total_tokens=total_tokens,
+                        latency_ms=int((time.time() - conversation_start_time) * 1000),
+                        tools_called=[]
+                    )
                 return message.content or "", total_tokens
 
             # Add assistant message with tool calls to history
@@ -283,3 +301,55 @@ Always base your answers on the actual data from the API endpoints."""
 
         # If we hit max iterations, return what we have
         return "I apologize, but I encountered an issue processing your request. Please try rephrasing your question.", total_tokens
+
+    def _capture_generation_event(
+        self,
+        trace_id: str,
+        email: str,
+        session_id: Optional[str],
+        messages: List[Dict[str, str]],
+        response_content: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+        latency_ms: int,
+        tools_called: List[str]
+    ) -> None:
+        """Capture $ai_generation event to PostHog"""
+        # Calculate costs
+        prompt_cost = (prompt_tokens / 1000) * self.prompt_cost_per_1k
+        completion_cost = (completion_tokens / 1000) * self.completion_cost_per_1k
+        total_cost = prompt_cost + completion_cost
+
+        # Get user message (last message in history)
+        user_message = messages[-1]["content"] if messages else ""
+
+        # Build event properties
+        properties = {
+            "$process_person_profile": False,
+            "model": self.deployment,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "prompt_cost": prompt_cost,
+            "completion_cost": completion_cost,
+            "total_cost": total_cost,
+            "latency_ms": latency_ms,
+            "trace_id": trace_id,
+            "tools_called": tools_called,
+            "tool_call_count": len(tools_called),
+            "input": user_message,
+            "output": response_content,
+            "input_length": len(user_message),
+            "output_length": len(response_content),
+            "endpoint": "/api/chat",
+        }
+
+        if session_id:
+            properties["session_id"] = session_id
+
+        self.posthog.capture(
+            distinct_id=email,
+            event="$ai_generation",
+            properties=properties
+        )
