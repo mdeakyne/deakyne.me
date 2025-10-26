@@ -180,7 +180,9 @@ Always base your answers on the actual data from the API endpoints."""
         self,
         messages: List[Dict[str, str]],
         tool_executor: Any,
-        max_iterations: int = 5
+        max_iterations: int = 5,
+        email: str = "anonymous",
+        session_id: Optional[str] = None
     ) -> tuple[str, int]:
         """
         Execute chat completion with function calling support
@@ -189,6 +191,8 @@ Always base your answers on the actual data from the API endpoints."""
             messages: Conversation history (list of {role, content} dicts)
             tool_executor: ToolExecutor instance for making API calls
             max_iterations: Maximum number of function calling iterations
+            email: User email for analytics tracking (default: "anonymous")
+            session_id: Conversation session ID for analytics tracking (optional)
 
         Returns:
             Tuple of (assistant_response, total_tokens_used)
