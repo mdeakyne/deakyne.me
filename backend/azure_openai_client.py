@@ -6,6 +6,9 @@ from openai import AzureOpenAI
 from typing import List, Dict, Any, Optional
 import os
 import json
+import time
+import uuid
+from posthog_client import get_posthog_client
 
 
 class AzureOpenAIClient:
@@ -29,6 +32,14 @@ class AzureOpenAIClient:
         self.deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4")
         self.tools = self._define_tools()
         self.system_prompt = self._get_system_prompt()
+
+        # PostHog analytics
+        self.analytics_enabled = os.getenv("LLM_ANALYTICS_ENABLED", "true").lower() == "true"
+        self.posthog = get_posthog_client() if self.analytics_enabled else None
+
+        # Pricing configuration (per 1K tokens)
+        self.prompt_cost_per_1k = float(os.getenv("GPT4_PROMPT_COST_PER_1K", "0.03"))
+        self.completion_cost_per_1k = float(os.getenv("GPT4_COMPLETION_COST_PER_1K", "0.06"))
 
     def _get_system_prompt(self) -> str:
         """System prompt for the AI assistant"""
