@@ -247,6 +247,13 @@ AZURE_OPENAI_API_VERSION=2024-02-15-preview
 CHAT_RATE_LIMIT_REQUESTS=10
 CHAT_RATE_LIMIT_WINDOW_HOURS=1
 CHAT_MAX_HISTORY_MESSAGES=20
+
+# LLM Analytics
+LLM_ANALYTICS_ENABLED=true
+GPT4_PROMPT_COST_PER_1K=0.03
+GPT4_COMPLETION_COST_PER_1K=0.06
+GPT4_TURBO_PROMPT_COST_PER_1K=0.01
+GPT4_TURBO_COMPLETION_COST_PER_1K=0.03
 ```
 
 ### Frontend Environment Variables
@@ -260,6 +267,26 @@ NEXT_PUBLIC_POSTHOG_DASHBOARD_URL=https://app.posthog.com/project/123/dashboard
 ```
 
 > **Note:** If you want to avoid generating PostHog person profiles for public traffic, set the `$process_person_profile` property to `false` when capturing events (the integration in this repo does this by default).
+
+### LLM Analytics
+
+The chat endpoint automatically tracks AI generations with PostHog:
+
+- **$ai_generation**: Chat completions with token usage, costs, latency
+- **$ai_tool_call**: Function calls with execution time and results
+- **$ai_error**: Errors during tool execution
+
+Configure pricing and enable/disable tracking:
+
+```env
+LLM_ANALYTICS_ENABLED=true
+GPT4_PROMPT_COST_PER_1K=0.03
+GPT4_COMPLETION_COST_PER_1K=0.06
+GPT4_TURBO_PROMPT_COST_PER_1K=0.01
+GPT4_TURBO_COMPLETION_COST_PER_1K=0.03
+```
+
+Cost estimates are based on official OpenAI pricing and tracked per-user and per-session for observability.
 
 ## Deployment
 
