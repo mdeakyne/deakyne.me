@@ -184,14 +184,14 @@ class TestToolCallEventCapture:
         tool_call.function.name = "get_profile"
         tool_call.function.arguments = "{}"
         mock_response_with_tool.choices[0].message.tool_calls = [tool_call]
-        mock_response_with_tool.usage = Mock(total_tokens=100)
+        mock_response_with_tool.usage = Mock(total_tokens=100, prompt_tokens=80, completion_tokens=20)
 
         # Mock final response without tool calls
         mock_final_response = Mock()
         mock_final_response.choices = [Mock()]
         mock_final_response.choices[0].message.content = "Matt is a technical educator."
         mock_final_response.choices[0].message.tool_calls = None
-        mock_final_response.usage = Mock(total_tokens=50)
+        mock_final_response.usage = Mock(total_tokens=50, prompt_tokens=30, completion_tokens=20)
 
         client = AzureOpenAIClient()
 
@@ -251,14 +251,14 @@ class TestErrorTracking:
         tool_call.function.name = "get_profile"
         tool_call.function.arguments = "{}"
         mock_response_with_tool.choices[0].message.tool_calls = [tool_call]
-        mock_response_with_tool.usage = Mock(total_tokens=100)
+        mock_response_with_tool.usage = Mock(total_tokens=100, prompt_tokens=80, completion_tokens=20)
 
         # Mock final response
         mock_final_response = Mock()
         mock_final_response.choices = [Mock()]
         mock_final_response.choices[0].message.content = "Error occurred"
         mock_final_response.choices[0].message.tool_calls = None
-        mock_final_response.usage = Mock(total_tokens=50)
+        mock_final_response.usage = Mock(total_tokens=50, prompt_tokens=30, completion_tokens=20)
 
         client = AzureOpenAIClient()
 

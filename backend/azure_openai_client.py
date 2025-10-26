@@ -280,16 +280,49 @@ Always base your answers on the actual data from the API endpoints."""
             })
 
             # Execute each tool call
+            tools_called = []
             for tool_call in message.tool_calls:
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
 
+                tools_called.append(function_name)
+
                 # Execute the tool via tool_executor
+                tool_start_time = time.time()
+                tool_error = None
                 try:
                     result = await tool_executor.execute(function_name, function_args)
                     function_response = json.dumps(result)
+                    tool_success = True
                 except Exception as e:
                     function_response = json.dumps({"error": str(e)})
+                    tool_success = False
+                    tool_error = e
+
+                tool_latency_ms = int((time.time() - tool_start_time) * 1000)
+
+                # Capture tool call event
+                if self.posthog and self.analytics_enabled:
+                    self._capture_tool_call_event(
+                        trace_id=trace_id,
+                        email=email,
+                        session_id=session_id,
+                        tool_name=function_name,
+                        tool_args=tool_call.function.arguments,
+                        tool_result_size=len(function_response),
+                        tool_latency_ms=tool_latency_ms,
+                        tool_success=tool_success
+                    )
+
+                    # Capture error event if tool failed
+                    if tool_error:
+                        self._capture_error_event(
+                            trace_id=trace_id,
+                            email=email,
+                            session_id=session_id,
+                            error=tool_error,
+                            tool_name=function_name
+                        )
 
                 # Add function response to messages
                 full_messages.append({
@@ -351,5 +384,36 @@ Always base your answers on the actual data from the API endpoints."""
         self.posthog.capture(
             distinct_id=email,
             event="$ai_generation",
+            properties=properties
+        )
+
+    def _capture_tool_call_event(
+        self,
+        trace_id: str,
+        email: str,
+        session_id: Optional[str],
+        tool_name: str,
+        tool_args: str,
+        tool_result_size: int,
+        tool_latency_ms: int,
+        tool_success: bool
+    ) -> None:
+        """Capture $ai_tool_call event to PostHog"""
+        properties = {
+            "$process_person_profile": False,
+            "tool_name": tool_name,
+            "tool_args": tool_args,
+            "tool_result_size": tool_result_size,
+            "tool_latency_ms": tool_latency_ms,
+            "tool_success": tool_success,
+            "trace_id": trace_id,
+        }
+
+        if session_id:
+            properties["session_id"] = session_id
+
+        self.posthog.capture(
+            distinct_id=email,
+            event="$ai_tool_call",
             properties=properties
         )
