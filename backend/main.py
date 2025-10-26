@@ -947,7 +947,12 @@ async def chat(
 
     # 8. Call Azure OpenAI with tools
     try:
-        response, tokens_used = await azure_client.chat_completion(messages, tool_executor)
+        response, tokens_used = await azure_client.chat_completion(
+            messages=messages,
+            tool_executor=tool_executor,
+            email=email,
+            session_id=session_id
+        )
     except Exception as e:
         print(f"Error calling Azure OpenAI: {e}")
         raise HTTPException(
