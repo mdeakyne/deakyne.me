@@ -38,8 +38,8 @@ class AzureOpenAIClient:
         self.posthog = get_posthog_client() if self.analytics_enabled else None
 
         # Pricing configuration (per 1K tokens)
-        self.prompt_cost_per_1k = float(os.getenv("GPT4_PROMPT_COST_PER_1K", "0.03"))
-        self.completion_cost_per_1k = float(os.getenv("GPT4_COMPLETION_COST_PER_1K", "0.06"))
+        self.prompt_cost_per_1k = float(os.getenv("GPT5_MINI_PROMPT_COST_PER_1K", "0.01"))
+        self.completion_cost_per_1k = float(os.getenv("GPT5_MINI_COMPLETION_COST_PER_1K", "0.03"))
 
     def _get_system_prompt(self) -> str:
         """System prompt for the AI assistant"""

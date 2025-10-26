@@ -43,8 +43,8 @@ class TestAIGenerationEventCapture:
         "AZURE_OPENAI_API_KEY": "test-key",
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
         "LLM_ANALYTICS_ENABLED": "true",
-        "GPT4_PROMPT_COST_PER_1K": "0.03",
-        "GPT4_COMPLETION_COST_PER_1K": "0.06"
+        "GPT5_MINI_PROMPT_COST_PER_1K": "0.01",
+        "GPT5_MINI_COMPLETION_COST_PER_1K": "0.03"
     })
     @pytest.mark.asyncio
     async def test_captures_ai_generation_event(
@@ -92,8 +92,8 @@ class TestAIGenerationEventCapture:
     @patch.dict(os.environ, {
         "AZURE_OPENAI_API_KEY": "test-key",
         "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
-        "GPT4_PROMPT_COST_PER_1K": "0.03",
-        "GPT4_COMPLETION_COST_PER_1K": "0.06"
+        "GPT5_MINI_PROMPT_COST_PER_1K": "0.01",
+        "GPT5_MINI_COMPLETION_COST_PER_1K": "0.03"
     })
     @pytest.mark.asyncio
     async def test_cost_calculation(
@@ -118,10 +118,10 @@ class TestAIGenerationEventCapture:
 
         props = mock_posthog.capture.call_args.kwargs["properties"]
 
-        # Cost calculation: (100/1000)*0.03 + (50/1000)*0.06 = 0.003 + 0.003 = 0.006
-        assert props["prompt_cost"] == pytest.approx(0.003, rel=1e-6)
-        assert props["completion_cost"] == pytest.approx(0.003, rel=1e-6)
-        assert props["total_cost"] == pytest.approx(0.006, rel=1e-6)
+        # Cost calculation: (100/1000)*0.01 + (50/1000)*0.03 = 0.001 + 0.0015 = 0.0025
+        assert props["prompt_cost"] == pytest.approx(0.001, rel=1e-6)
+        assert props["completion_cost"] == pytest.approx(0.0015, rel=1e-6)
+        assert props["total_cost"] == pytest.approx(0.0025, rel=1e-6)
 
     @patch("azure_openai_client.get_posthog_client")
     @patch.dict(os.environ, {
