@@ -417,3 +417,31 @@ Always base your answers on the actual data from the API endpoints."""
             event="$ai_tool_call",
             properties=properties
         )
+
+    def _capture_error_event(
+        self,
+        trace_id: str,
+        email: str,
+        session_id: Optional[str],
+        error: Exception,
+        tool_name: Optional[str] = None
+    ) -> None:
+        """Capture $ai_error event to PostHog"""
+        properties = {
+            "$process_person_profile": False,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+            "trace_id": trace_id,
+        }
+
+        if session_id:
+            properties["session_id"] = session_id
+
+        if tool_name:
+            properties["tool_name"] = tool_name
+
+        self.posthog.capture(
+            distinct_id=email,
+            event="$ai_error",
+            properties=properties
+        )
